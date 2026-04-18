@@ -12,10 +12,10 @@ const store = useDagStore()
 const dag = computed(() => store.getDag(route.params.id as string))
 
 const tabs = [
-  { label: 'Overview',             route: '',           value: '0' },
+  { label: 'Components',           route: '',           value: '0' },
   { label: 'Landscape',            route: 'landscape',  value: '1' },
-  { label: 'Technical Landscape',  route: 'technical',  value: '2' },
-  { label: 'Application Flows',    route: 'flows',      value: '3' },
+  { label: 'Application Flows',    route: 'flows',      value: '2' },
+  { label: 'Technical Landscape',  route: 'technical',  value: '3' },
 ]
 </script>
 
