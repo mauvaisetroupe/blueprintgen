@@ -13,11 +13,16 @@ export interface MissingLandscapeRelation {
   toName: string
 }
 
+// Only forward (request) arrows — dashed return arrows (-->>, -->, --x) are excluded
+const REQUEST_ARROW_REGEX = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)/
+// All arrows including returns — used for participant detection only
+const ANY_ARROW_REGEX = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+
 // Collects all unique component-level relations across all application flows
 export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComponentId: string }> {
   const seen = new Set<string>()
   const result: Array<{ fromComponentId: string; toComponentId: string }> = []
-  const arrowRegex = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+  const arrowRegex = REQUEST_ARROW_REGEX
 
   for (const flow of dag.applicationFlows) {
     if (!flow.mermaidDsl?.trim()) continue
@@ -38,7 +43,7 @@ export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: stri
 
 // Returns participant IDs used in arrows but not matching any known component
 export function findUnknownParticipants(body: string, dag: Dag): string[] {
-  const arrowRegex = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+  const arrowRegex = ANY_ARROW_REGEX
   const knownIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => toNodeId(c.name)))
   const unknown = new Set<string>()
   for (const raw of body.split('\n')) {
@@ -52,8 +57,7 @@ export function findUnknownParticipants(body: string, dag: Dag): string[] {
 
 // Parses sequence diagram body and returns relations missing from the landscape model
 export function findMissingLandscapeRelations(body: string, dag: Dag): MissingLandscapeRelation[] {
-  // Matches: participantA ->> participantB, A --> B, A -x B, A ->>+ B, etc.
-  const arrowRegex = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+  const arrowRegex = REQUEST_ARROW_REGEX
 
   const seen = new Set<string>()
   const missing: MissingLandscapeRelation[] = []

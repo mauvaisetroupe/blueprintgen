@@ -1,44 +1,25 @@
----
-config:
-    theme: neutral
----
-
 flowchart TB
-  subgraph Users
-    internet_user["Internet user"]
-  end
-  subgraph Frontends
-    webfrontend["WebFrontEnd"]
-  end
-  subgraph Backends
-    api_backend["API backend"]
-    catalogservice["CatalogService"]
-    commandservice["CommandService"]
-    ordering_service["Ordering Service"]
-  end
-  subgraph Data Storage
-    mydb["MyDB"]
-  end
-  subgraph External Systems
-    payment_service["Payment Service"]
-  end
+subgraph Users
+  internet_user["Internet user"]
+end
+subgraph Frontends
+  webfrontend["WebFrontEnd"]
+end
+subgraph Backends
+  api_backend["API backend"]
+  catalogservice["CatalogService"]
+  commandservice["CommandService"]
+  ordering_service["Ordering Service"]
+end
+subgraph Data Storage
+  mydb["MyDB"]
+end
+subgraph External Systems
+  payment_service["Payment Service"]
+end
 
 
-BAD
-
-End user browses the product catalog
-internet_user ->> webfrontend: Browse catalog
-webfrontend ->> api_backend: GET /catalog
-api_backend ->> catalog_service: fetchProducts()
-catalog_service ->> mydb_storage: SELECT products
-mydb_storage -->> catalog_service: products[]
-catalog_service -->> api_backend: products[]
-api_backend -->> webfrontend: 200 OK
-webfrontend -->> internet_user: Display catalog
-
-GOOD
-
-End user browses the product catalog
+%% End user browses the product catalog
 internet_user ->> webfrontend: Browse catalog
 webfrontend ->> api_backend: GET /catalog
 api_backend ->> catalogservice: fetchProducts()
@@ -47,3 +28,43 @@ mydb -->> catalogservice: products[]
 catalogservice -->> api_backend: products[]
 api_backend -->> webfrontend: 200 OK
 webfrontend -->> internet_user: Display catalog
+
+%% Place order
+internet_user ->> webfrontend: Place order
+webfrontend ->> api_backend: POST /orders
+api_backend ->> commandservice: createOrder()
+commandservice ->> catalogservice: checkStock()
+catalogservice ->> mydb: SELECT stock
+mydb -->> catalogservice: stock
+catalogservice -->> commandservice: stockOk
+commandservice ->> mydb: INSERT order
+commandservice ->> ordering_service: processOrder()
+ordering_service ->> payment_service: processPayment()
+payment_service -->> ordering_service: paymentConfirmed
+ordering_service ->> mydb: UPDATE order status
+ordering_service -->> commandservice: orderConfirmed
+commandservice -->> api_backend: orderId
+api_backend -->> webfrontend: 201 Created
+webfrontend -->> internet_user: Order confirmed
+
+%% Check order status
+internet_user ->> webfrontend: Check order status
+webfrontend ->> api_backend: GET /orders/{id}
+api_backend ->> ordering_service: getOrderStatus()
+ordering_service ->> mydb: SELECT order
+mydb -->> ordering_service: order
+ordering_service -->> api_backend: orderStatus
+api_backend -->> webfrontend: 200 OK
+webfrontend -->> internet_user: Display status
+
+%% Update catalog (admin)
+internet_user ->> webfrontend: Update product
+webfrontend ->> api_backend: PUT /catalog/{id}
+api_backend ->> commandservice: updateProduct()
+commandservice ->> catalogservice: updateCatalogEntry()
+catalogservice ->> mydb: UPDATE product
+mydb -->> catalogservice: updated
+catalogservice -->> commandservice: ok
+commandservice -->> api_backend: success
+api_backend -->> webfrontend: 200 OK
+webfrontend -->> internet_user: Product updated
