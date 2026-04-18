@@ -1,21 +1,43 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: HomeView,
+      name: 'dag-list',
+      component: () => import('@/views/DagListView.vue'),
     },
     {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
+      path: '/dag/new',
+      name: 'dag-create',
+      component: () => import('@/views/DagCreateView.vue'),
+    },
+    {
+      path: '/dag/:id',
+      component: () => import('@/views/DagDetailLayout.vue'),
+      children: [
+        {
+          path: '',
+          name: 'dag-overview',
+          component: () => import('@/views/dag/DagOverviewView.vue'),
+        },
+        {
+          path: 'landscape',
+          name: 'dag-landscape',
+          component: () => import('@/views/dag/LandscapeView.vue'),
+        },
+        {
+          path: 'technical',
+          name: 'dag-technical',
+          component: () => import('@/views/dag/TechnicalLandscapeView.vue'),
+        },
+        {
+          path: 'flows',
+          name: 'dag-flows',
+          component: () => import('@/views/dag/ApplicationFlowsView.vue'),
+        },
+      ],
     },
   ],
 })
