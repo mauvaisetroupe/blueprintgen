@@ -14,6 +14,7 @@ flowchart TB
     api_backend["API backend"]
     catalogservice["CatalogService"]
     commandservice["CommandService"]
+    ordering_service["Ordering Service"]
   end
   subgraph Data Storage
     mydb["MyDB"]
@@ -27,4 +28,7 @@ flowchart TB
   api_backend --> commandservice
   catalogservice --> mydb
   commandservice --> mydb
-
+  commandservice --> ordering_service
+  ordering_service --> payment_service
+  ordering_service --> mydb
+  commandservice --> catalogservice

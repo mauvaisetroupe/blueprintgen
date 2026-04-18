@@ -24,6 +24,10 @@ const selectedFlow = computed(() =>
 // DSL local copy to drive the editor
 const editorDsl = ref('')
 
+// --- Validation (syntax only for sequence diagrams) ---
+const syntaxError = ref<string | null>(null)
+const isValidating = ref(false)
+
 watch(selectedFlow, (flow) => {
   editorDsl.value = flow?.mermaidDsl ?? ''
   syntaxError.value = null
@@ -36,10 +40,6 @@ const completionNames = computed(() =>
     .filter((c) => c.name.trim() !== '')
     .map((c) => toParticipantId(c.name)),
 )
-
-// --- Validation (syntax only for sequence diagrams) ---
-const syntaxError = ref<string | null>(null)
-const isValidating = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 async function runValidation(code: string) {
