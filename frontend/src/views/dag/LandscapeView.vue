@@ -9,6 +9,8 @@ import mermaid from 'mermaid'
 import Button from 'primevue/button'
 import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
+import Splitter from 'primevue/splitter'
+import SplitterPanel from 'primevue/splitterpanel'
 
 const route = useRoute()
 const store = useDagStore()
@@ -28,10 +30,10 @@ const generatedDsl = computed(() => {
 const editMode = ref<'generated' | 'manual'>('generated')
 const modeOptions = [
   { label: 'Generated', value: 'generated' },
-  { label: 'Edit DSL', value: 'manual' },
+  { label: 'Edit DSL',  value: 'manual' },
 ]
 
-const manualDsl = ref(dag.value?.landscape.mermaidDsl ?? '')
+const manualDsl = ref(dag.value?.landscape.mermaidDsl || '')
 
 const activeDsl = computed(() =>
   editMode.value === 'manual' ? manualDsl.value : generatedDsl.value,
@@ -47,7 +49,7 @@ function resetToGenerated() {
   editMode.value = 'generated'
   syntaxError.value = null
   functionalResult.value = null
-  if (dag.value) store.saveLandscapeDsl(dag.value.id, '')
+  if (dag.value) store.saveLandscapeDsl(dag.value.id, undefined)
 }
 
 watch(editMode, (mode) => {
@@ -62,13 +64,10 @@ function toggleSubgraph(categoryId: string, value: boolean) {
   store.updateCategory(dag.value.id, categoryId, { showSubgraph: value })
 }
 
-// --- Syntax validation ---
-const syntaxError = ref<string | null>(null)
-const isValidating = ref(false)
-
-// --- Functional validation ---
+// --- Validation ---
+const syntaxError     = ref<string | null>(null)
+const isValidating    = ref(false)
 const functionalResult = ref<DslValidationResult | null>(null)
-
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 async function runValidation(code: string) {
@@ -77,12 +76,10 @@ async function runValidation(code: string) {
     functionalResult.value = null
     return
   }
-
   isValidating.value = true
   syntaxError.value = null
   functionalResult.value = null
 
-  // Step 1: syntax
   try {
     await mermaid.parse(code)
   } catch (e) {
@@ -92,11 +89,7 @@ async function runValidation(code: string) {
     return
   }
 
-  // Step 2: functional (only if syntax is valid)
-  if (dag.value) {
-    functionalResult.value = validateDslAgainstModel(code, dag.value)
-  }
-
+  if (dag.value) functionalResult.value = validateDslAgainstModel(code, dag.value)
   isValidating.value = false
 }
 
@@ -106,30 +99,26 @@ function onDslInput() {
   debounceTimer = setTimeout(() => runValidation(manualDsl.value), 400)
 }
 
-// --- Sync model from DSL ---
 function syncModel() {
   if (!dag.value || !functionalResult.value) return
   store.syncFromDsl(dag.value.id, functionalResult.value.parsed)
-  // Re-run validation — issues should be gone
   runValidation(manualDsl.value)
 }
 
-// Computed helpers
-const hasWarnings = computed(() =>
-  (functionalResult.value?.issues.length ?? 0) > 0,
-)
+const hasWarnings = computed(() => (functionalResult.value?.issues.length ?? 0) > 0)
 
 const validationStatus = computed(() => {
-  if (isValidating.value) return 'validating'
-  if (syntaxError.value) return 'syntax-error'
+  if (isValidating.value)          return 'validating'
+  if (syntaxError.value)           return 'syntax-error'
   if (functionalResult.value === null) return 'idle'
-  if (hasWarnings.value) return 'warnings'
+  if (hasWarnings.value)           return 'warnings'
   return 'valid'
 })
 </script>
 
 <template>
   <div v-if="dag" class="landscape">
+
     <!-- Toolbar -->
     <div class="toolbar">
       <SelectButton
@@ -160,20 +149,10 @@ const validationStatus = computed(() => {
           {{ cat.name }}
         </label>
       </div>
-    </div>
 
-    <!-- Main content -->
-    <div class="content" :class="{ split: editMode === 'manual' }">
-      <!-- Diagram -->
-      <div class="diagram-panel">
-        <MermaidDiagram :code="activeDsl" />
-      </div>
-
-      <!-- DSL editor (manual mode only) -->
-      <div v-if="editMode === 'manual'" class="editor-panel">
-
-        <!-- Validation bar -->
-        <div class="validation-bar">
+      <!-- Manual mode actions in toolbar -->
+      <template v-if="editMode === 'manual'">
+        <div class="validation-status">
           <span v-if="validationStatus === 'validating'" class="status validating">
             <i class="pi pi-spin pi-spinner" /> Validating…
           </span>
@@ -186,40 +165,47 @@ const validationStatus = computed(() => {
           <span v-else-if="validationStatus === 'valid'" class="status valid">
             <i class="pi pi-check-circle" /> Valid
           </span>
-          <span v-else class="status idle" />
-
-          <div class="bar-actions">
-            <Button
-              v-if="hasWarnings"
-              label="Sync model"
-              icon="pi pi-sync"
-              size="small"
-              severity="warn"
-              @click="syncModel"
-            />
-            <Button
-              label="Reset to generated"
-              icon="pi pi-refresh"
-              size="small"
-              severity="secondary"
-              text
-              @click="resetToGenerated"
-            />
-          </div>
         </div>
 
-        <!-- Textarea -->
+        <Button
+          v-if="hasWarnings"
+          label="Sync model"
+          icon="pi pi-sync"
+          size="small"
+          severity="warn"
+          @click="syncModel"
+        />
+        <Button
+          label="Reset to generated"
+          icon="pi pi-refresh"
+          size="small"
+          severity="secondary"
+          text
+          @click="resetToGenerated"
+        />
+      </template>
+    </div>
+
+    <!-- Generated mode: diagram only -->
+    <div v-if="editMode === 'generated'" class="diagram-only">
+      <MermaidDiagram :code="activeDsl" />
+    </div>
+
+    <!-- Manual mode: splitter editor | diagram -->
+    <Splitter v-else class="splitter" state-key="landscape-splitter" state-storage="local">
+      <SplitterPanel :size="35" :min-size="20" class="editor-panel">
+
         <textarea
           v-model="manualDsl"
           spellcheck="false"
           :class="{
             'has-syntax-error': validationStatus === 'syntax-error',
-            'has-warnings': validationStatus === 'warnings',
+            'has-warnings':     validationStatus === 'warnings',
           }"
           @input="onDslInput"
         />
 
-        <!-- Syntax error detail -->
+        <!-- Syntax error -->
         <div v-if="syntaxError" class="issue-list error-list">
           <div class="issue-item">
             <i class="pi pi-times-circle" />
@@ -234,25 +220,34 @@ const validationStatus = computed(() => {
             <span>{{ issue.message }}</span>
           </div>
         </div>
-      </div>
-    </div>
+
+      </SplitterPanel>
+
+      <SplitterPanel :size="65" :min-size="30" class="diagram-panel">
+        <MermaidDiagram :code="activeDsl" />
+      </SplitterPanel>
+    </Splitter>
+
   </div>
 </template>
 
 <style scoped>
 .landscape {
-  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
   height: 100%;
+  gap: 0;
 }
 
+/* Toolbar */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
   flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--p-content-border-color);
+  flex-shrink: 0;
 }
 
 .elk-toggle {
@@ -279,77 +274,92 @@ const validationStatus = computed(() => {
   cursor: pointer;
 }
 
-.content { flex: 1; overflow: hidden; }
+/* Validation status in toolbar */
+.validation-status { margin-left: auto; }
 
-.content.split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-.diagram-panel { overflow: auto; height: 100%; }
-
-.editor-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  height: 100%;
-  min-height: 0;
-}
-
-/* Validation bar */
-.validation-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-}
-
-.bar-actions { display: flex; gap: 0.5rem; align-items: center; }
-
-.status { display: flex; align-items: center; gap: 0.35rem; }
+.status { display: flex; align-items: center; gap: 0.35rem; font-size: 0.875rem; }
 .status.validating { color: var(--p-text-muted-color); }
 .status.valid      { color: #16a34a; }
 .status.error      { color: #dc2626; }
 .status.warning    { color: #d97706; }
 
-/* Textarea */
-.editor-panel textarea {
+/* Generated mode */
+.diagram-only {
   flex: 1;
-  font-family: monospace;
-  font-size: 0.875rem;
-  padding: 0.75rem;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 6px;
-  resize: none;
-  background: var(--p-surface-0);
-  color: var(--p-text-color);
-  outline: none;
-  transition: border-color 0.2s;
-  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
 }
 
-.editor-panel textarea:focus        { border-color: var(--p-primary-color); }
-.editor-panel textarea.has-syntax-error { border-color: #dc2626; }
-.editor-panel textarea.has-warnings     { border-color: #d97706; }
+/* Splitter */
+.splitter {
+  flex: 1;
+  min-height: 0;
+  border: none !important;
+}
+
+/* Editor panel */
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  padding: 0 !important;
+}
+
+.editor-panel textarea {
+  flex: 1;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 1rem;
+  border: none;
+  border-right: 1px solid var(--p-content-border-color);
+  resize: none;
+  background: var(--p-surface-50, #fafafa);
+  color: var(--p-text-color);
+  outline: none;
+  transition: background 0.2s;
+  min-height: 0;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+.editor-panel textarea:focus {
+  background: var(--p-surface-0);
+}
+
+.editor-panel textarea.has-syntax-error {
+  border-left: 3px solid #dc2626;
+}
+
+.editor-panel textarea.has-warnings {
+  border-left: 3px solid #d97706;
+}
+
+/* Diagram panel */
+.diagram-panel {
+  overflow: auto;
+  padding: 1rem !important;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
 
 /* Issue lists */
 .issue-list {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-family: monospace;
   flex-shrink: 0;
-  max-height: 150px;
+  max-height: 140px;
   overflow-y: auto;
-  border-radius: 4px;
   padding: 0.5rem 0.75rem;
 }
 
-.error-list   { background: #fef2f2; border: 1px solid #fca5a5; color: #dc2626; }
-.warning-list { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.error-list   { background: #fef2f2; border-top: 1px solid #fca5a5; color: #dc2626; }
+.warning-list { background: #fffbeb; border-top: 1px solid #fcd34d; color: #92400e; }
 
 .issue-item {
   display: flex;

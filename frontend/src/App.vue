@@ -60,6 +60,7 @@ import Toast from 'primevue/toast'
 
 .content {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>

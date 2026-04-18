@@ -53,6 +53,8 @@ const tabs = [
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .detail-header {
@@ -75,8 +77,15 @@ const tabs = [
 
 .tab-content {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 1.5rem;
+}
+
+/* Views that manage their own layout get no padding */
+.tab-content:has(> .landscape) {
+  padding: 0;
+  overflow: hidden;
 }
 
 .not-found {
