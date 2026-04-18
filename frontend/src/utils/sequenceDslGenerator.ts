@@ -4,6 +4,56 @@ import { toNodeId } from './landscapeDslGenerator'
 // Reuse the same ID convention as the landscape generator
 export { toNodeId as toParticipantId }
 
+// --- Sequence relation extraction ---
+
+export interface MissingLandscapeRelation {
+  fromCompId: string
+  toCompId: string
+  fromName: string
+  toName: string
+}
+
+// Parses sequence diagram body and returns relations missing from the landscape model
+export function findMissingLandscapeRelations(body: string, dag: Dag): MissingLandscapeRelation[] {
+  // Matches: participantA ->> participantB, A --> B, A -x B, A ->>+ B, etc.
+  const arrowRegex = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+
+  const seen = new Set<string>()
+  const missing: MissingLandscapeRelation[] = []
+
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+    const match = line.match(arrowRegex)
+    if (!match) continue
+
+    const fromId = match[1]
+    const toId   = match[2]
+    const key    = `${fromId}->${toId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    // Resolve IDs to model components
+    const fromComp = dag.components.find((c) => toNodeId(c.name) === fromId)
+    const toComp   = dag.components.find((c) => toNodeId(c.name) === toId)
+    if (!fromComp || !toComp) continue // not model components — skip
+
+    // Check if relation already exists in landscape
+    const exists = dag.relations.some(
+      (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
+    )
+    if (!exists) {
+      missing.push({
+        fromCompId: fromComp.id,
+        toCompId:   toComp.id,
+        fromName:   fromComp.name,
+        toName:     toComp.name,
+      })
+    }
+  }
+
+  return missing
+}
+
 // Initial body for a new flow (no boilerplate — participants are auto-injected at render time)
 export function generateFlowSkeleton(): string {
   return '%% Add sequence steps below\n'

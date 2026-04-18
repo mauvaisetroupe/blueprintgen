@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, buildSequenceDsl, toParticipantId } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, toParticipantId, findMissingLandscapeRelations } from '@/utils/sequenceDslGenerator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
@@ -73,6 +73,19 @@ const validationStatus = computed(() => {
   if (syntaxError.value)  return 'syntax-error'
   return 'valid'
 })
+
+// Relations used in this flow but absent from the landscape
+const missingRelations = computed(() => {
+  if (!dag.value || !editorDsl.value.trim()) return []
+  return findMissingLandscapeRelations(editorDsl.value, dag.value)
+})
+
+function addToLandscape() {
+  if (!dag.value) return
+  for (const rel of missingRelations.value) {
+    store.addRelation(dag.value.id, rel.fromCompId, rel.toCompId)
+  }
+}
 
 // --- Flow CRUD ---
 function addFlow() {
@@ -165,6 +178,23 @@ function updateDescription(e: Event) {
             <div class="issue-item">
               <i class="pi pi-times-circle" />
               <span>{{ syntaxError }}</span>
+            </div>
+          </div>
+
+          <div v-if="missingRelations.length > 0" class="issue-list warning-list">
+            <div class="warning-header">
+              <span><i class="pi pi-exclamation-triangle" /> {{ missingRelations.length }} relation(s) not in landscape</span>
+              <Button
+                label="Add to landscape"
+                icon="pi pi-plus"
+                size="small"
+                severity="warn"
+                text
+                @click="addToLandscape"
+              />
+            </div>
+            <div v-for="rel in missingRelations" :key="`${rel.fromCompId}-${rel.toCompId}`" class="issue-item">
+              <span>{{ rel.fromName }} → {{ rel.toName }}</span>
             </div>
           </div>
 
@@ -331,7 +361,16 @@ function updateDescription(e: Event) {
   padding: 0.5rem 0.75rem;
 }
 
-.error-list { background: #fef2f2; border-top: 1px solid #fca5a5; color: #dc2626; }
+.error-list   { background: #fef2f2; border-top: 1px solid #fca5a5; color: #dc2626; }
+.warning-list { background: #fffbeb; border-top: 1px solid #fcd34d; color: #92400e; }
+
+.warning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
 
 .issue-item { display: flex; gap: 0.5rem; align-items: flex-start; }
 
