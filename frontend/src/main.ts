@@ -9,8 +9,12 @@ import Aura from '@primevue/themes/aura'
 import ToastService from 'primevue/toastservice'
 import ConfirmationService from 'primevue/confirmationservice'
 
+import mermaid from 'mermaid'
+import elkLayouts from '@mermaid-js/layout-elk'
 import App from './App.vue'
 import router from './router'
+
+mermaid.registerLayoutLoaders(elkLayouts)
 
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)
