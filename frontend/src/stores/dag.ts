@@ -47,7 +47,10 @@ export const useDagStore = defineStore(
     }
 
     function getDag(id: string): Dag | undefined {
-      return dags.value.find((d) => d.id === id)
+      const dag = dags.value.find((d) => d.id === id)
+      // Migrate DAGs created before new fields were added
+      if (dag && !dag.relations) dag.relations = []
+      return dag
     }
 
     // --- Categories ---
