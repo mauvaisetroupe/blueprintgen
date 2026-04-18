@@ -42,14 +42,13 @@ function completionSource(context: CompletionContext): CompletionResult | null {
     }
   }
 
-  // Explicit trigger (Ctrl+Space) at start of line: suggest source participant/node
-  if (context.explicit) {
-    const atStart = textToCursor.match(/^\s*(\w*)$/)
-    if (atStart) {
-      return {
-        from: context.pos - (atStart[1]?.length ?? 0),
-        options: names.map((n) => ({ label: n, type: 'variable' as const })),
-      }
+  // At start of line (at least 1 char typed): suggest source participant/node
+  // \w+ avoids triggering on empty lines
+  const atStart = textToCursor.match(/^\s*(\w+)$/)
+  if (atStart) {
+    return {
+      from: context.pos - (atStart[1].length),
+      options: names.map((n) => ({ label: n, type: 'variable' as const })),
     }
   }
 
