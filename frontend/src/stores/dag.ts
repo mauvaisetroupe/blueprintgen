@@ -183,6 +183,31 @@ export const useDagStore = defineStore(
         }
       }
 
+      // Sync relations from parsed arrows
+      for (const parsedRel of parsed.relations) {
+        // Resolve node IDs to component names via parsed nodes, then to model components
+        const fromNode = parsed.nodes.find((n) => n.id === parsedRel.fromId)
+        const toNode   = parsed.nodes.find((n) => n.id === parsedRel.toId)
+        if (!fromNode || !toNode) continue
+
+        const fromComp = dag.components.find((c) => c.name === fromNode.label)
+        const toComp   = dag.components.find((c) => c.name === toNode.label)
+        if (!fromComp || !toComp) continue
+
+        // Add only if relation doesn't already exist
+        const exists = dag.relations.some(
+          (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
+        )
+        if (!exists) {
+          dag.relations.push({
+            id: generateId(),
+            fromComponentId: fromComp.id,
+            toComponentId: toComp.id,
+            label: parsedRel.label,
+          })
+        }
+      }
+
       dag.updatedAt = now()
     }
 

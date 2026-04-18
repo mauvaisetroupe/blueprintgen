@@ -1,0 +1,30 @@
+---
+config:
+    theme: neutral
+---
+
+flowchart TB
+  subgraph Users
+    internet_user["Internet user"]
+  end
+  subgraph Frontends
+    webfrontend["WebFrontEnd"]
+  end
+  subgraph Backends
+    api_backend["API backend"]
+    catalogservice["CatalogService"]
+    commandservice["CommandService"]
+  end
+  subgraph Data Storage
+    mydb["MyDB"]
+  end
+  subgraph External Systems
+    payment_service["Payment Service"]
+  end
+  internet_user -->|HTTPS| webfrontend
+  webfrontend --> api_backend
+  api_backend --> catalogservice
+  api_backend --> commandservice
+  catalogservice --> mydb
+  commandservice --> mydb
+

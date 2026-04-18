@@ -18,8 +18,8 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
   const issues: ValidationIssue[] = []
   const reportedCategories = new Set<string>()
 
+  // --- Node / component validation ---
   for (const node of parsed.nodes) {
-    // Check component exists (match by label = component name)
     const component = dag.components.find((c) => c.name === node.label)
 
     if (!component) {
@@ -27,7 +27,6 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
         type: 'warning',
         message: `Component "${node.label}" is not in the model — it will be created on sync`,
       })
-      // Check the target category too
       if (node.subgraph && !dag.categories.find((c) => c.name === node.subgraph) && !reportedCategories.has(node.subgraph)) {
         reportedCategories.add(node.subgraph)
         issues.push({
@@ -38,10 +37,8 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
       continue
     }
 
-    // Check category placement
     if (node.subgraph) {
       const targetCategory = dag.categories.find((c) => c.name === node.subgraph)
-
       if (!targetCategory) {
         if (!reportedCategories.has(node.subgraph)) {
           reportedCategories.add(node.subgraph)
@@ -59,6 +56,44 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
           })
         }
       }
+    }
+  }
+
+  // --- Relation / arrow validation ---
+  // Build a map nodeId → component for quick lookup
+  const nodeToComponent = new Map(
+    parsed.nodes.map((n) => [n.id, dag.components.find((c) => c.name === n.label)])
+  )
+
+  for (const rel of parsed.relations) {
+    const fromComp = nodeToComponent.get(rel.fromId)
+    const toComp   = nodeToComponent.get(rel.toId)
+
+    if (!fromComp) {
+      issues.push({
+        type: 'warning',
+        message: `Arrow: source node "${rel.fromId}" has no matching component in the model`,
+      })
+      continue
+    }
+    if (!toComp) {
+      issues.push({
+        type: 'warning',
+        message: `Arrow: target node "${rel.toId}" has no matching component in the model`,
+      })
+      continue
+    }
+
+    // Check if relation already exists in model
+    const exists = dag.relations.some(
+      (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
+    )
+    if (!exists) {
+      const label = rel.label ? ` (${rel.label})` : ''
+      issues.push({
+        type: 'warning',
+        message: `New relation "${fromComp.name}" → "${toComp.name}"${label} will be added on sync`,
+      })
     }
   }
 
