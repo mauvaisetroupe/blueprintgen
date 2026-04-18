@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { type Dag, type Category, type Component, DEFAULT_CATEGORIES } from '@/types/dag'
+import type { ParsedDsl } from '@/utils/dslParser'
 
 function generateId(): string {
   return crypto.randomUUID()
@@ -116,6 +117,50 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    // --- Sync model from parsed DSL ---
+    // Creates missing categories/components and moves misplaced components
+    function syncFromDsl(dagId: string, parsed: ParsedDsl) {
+      const dag = getDag(dagId)
+      if (!dag) return
+
+      for (const node of parsed.nodes) {
+        // Ensure category exists
+        let category = node.subgraph ? dag.categories.find((c) => c.name === node.subgraph) : null
+        if (node.subgraph && !category) {
+          category = {
+            id: generateId(),
+            name: node.subgraph,
+            order: dag.categories.length + 1,
+            showSubgraph: true,
+          }
+          dag.categories.push(category)
+        }
+
+        // Find or create component
+        const component = dag.components.find((c) => c.name === node.label)
+        if (!component) {
+          dag.components.push({
+            id: generateId(),
+            name: node.label,
+            description: '',
+            categoryId: category?.id ?? '',
+          })
+        } else if (category && component.categoryId !== category.id) {
+          component.categoryId = category.id
+        }
+      }
+
+      dag.updatedAt = now()
+    }
+
+    // --- Save landscape DSL ---
+    function saveLandscapeDsl(dagId: string, dsl: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.landscape.mermaidDsl = dsl
+      dag.updatedAt = now()
+    }
+
     return {
       dags,
       createDag,
@@ -128,6 +173,8 @@ export const useDagStore = defineStore(
       addComponent,
       updateComponent,
       deleteComponent,
+      syncFromDsl,
+      saveLandscapeDsl,
     }
   },
   {
