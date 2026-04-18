@@ -220,6 +220,39 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    // --- Application Flows ---
+
+    function addFlow(dagId: string, name: string, description: string, mermaidDsl?: string) {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const flow = {
+        id: generateId(),
+        name,
+        description,
+        steps: [],
+        mermaidDsl,
+      }
+      dag.applicationFlows.push(flow)
+      dag.updatedAt = now()
+      return flow
+    }
+
+    function updateFlow(dagId: string, flowId: string, patch: Partial<Pick<import('@/types/dag').ApplicationFlow, 'name' | 'description' | 'mermaidDsl'>>) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      const flow = dag.applicationFlows.find((f) => f.id === flowId)
+      if (!flow) return
+      Object.assign(flow, patch)
+      dag.updatedAt = now()
+    }
+
+    function deleteFlow(dagId: string, flowId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.applicationFlows = dag.applicationFlows.filter((f) => f.id !== flowId)
+      dag.updatedAt = now()
+    }
+
     // --- Save landscape DSL ---
     function saveLandscapeDsl(dagId: string, dsl: string | undefined) {
       const dag = getDag(dagId)
@@ -245,6 +278,9 @@ export const useDagStore = defineStore(
       deleteRelation,
       syncFromDsl,
       saveLandscapeDsl,
+      addFlow,
+      updateFlow,
+      deleteFlow,
     }
   },
   {

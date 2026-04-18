@@ -83,7 +83,8 @@ const tabs = [
 }
 
 /* Views that manage their own layout get no padding */
-.tab-content:has(> .landscape) {
+.tab-content:has(> .landscape),
+.tab-content:has(> .flows) {
   padding: 0;
   overflow: hidden;
 }
