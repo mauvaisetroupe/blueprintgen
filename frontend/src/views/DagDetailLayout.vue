@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
+import { exportToPptx } from '@/utils/pptxExporter'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
+import Button from 'primevue/button'
 
 const route = useRoute()
 const store = useDagStore()
@@ -17,12 +19,32 @@ const tabs = [
   { label: 'Application Flows',    route: 'flows',      value: '2' },
   { label: 'Technical Landscape',  route: 'technical',  value: '3' },
 ]
+
+const exporting = ref(false)
+
+async function handleExport() {
+  if (!dag.value || exporting.value) return
+  exporting.value = true
+  try {
+    await exportToPptx(dag.value)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
   <div v-if="dag" class="detail-layout">
     <div class="detail-header">
       <h2>{{ dag.name }}</h2>
+      <Button
+        label="Export PPTX"
+        icon="pi pi-file-export"
+        size="small"
+        severity="secondary"
+        :loading="exporting"
+        @click="handleExport"
+      />
     </div>
 
     <Tabs value="0" class="detail-tabs">
@@ -59,6 +81,9 @@ const tabs = [
 
 .detail-header {
   padding: 1.25rem 1.5rem 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .detail-header h2 {
