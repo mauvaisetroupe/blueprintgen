@@ -8,6 +8,7 @@ const props = defineProps<{
   modelValue: string
   completionNames?: string[]
   validationStatus?: 'idle' | 'validating' | 'syntax-error' | 'warnings' | 'valid'
+  readOnlyHeader?: string
 }>()
 
 const emit = defineEmits<{
@@ -62,18 +63,46 @@ const extensions = [
 </script>
 
 <template>
-  <Codemirror
-    :model-value="modelValue"
-    :extensions="extensions"
-    :indent-with-tab="true"
-    spellcheck="false"
-    :class="['dsl-editor', `status-${validationStatus ?? 'idle'}`]"
-    @update:model-value="emit('update:modelValue', $event)"
-  />
+  <div :class="['dsl-editor', `status-${validationStatus ?? 'idle'}`]">
+    <pre v-if="readOnlyHeader" class="dsl-header">{{ readOnlyHeader }}</pre>
+    <Codemirror
+      :model-value="modelValue"
+      :extensions="extensions"
+      :indent-with-tab="true"
+      spellcheck="false"
+      class="dsl-body"
+      @update:model-value="emit('update:modelValue', $event)"
+    />
+  </div>
 </template>
 
 <style scoped>
 .dsl-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--p-content-border-color);
+}
+
+/* Read-only header block */
+.dsl-header {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--p-text-muted-color);
+  background: var(--p-surface-100, #f4f4f5);
+  border-bottom: 1px dashed var(--p-content-border-color);
+  white-space: pre;
+  overflow-x: auto;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* CodeMirror body */
+.dsl-body {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -93,7 +122,6 @@ const extensions = [
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 0.85rem;
   background: var(--p-surface-50, #fafafa);
-  border-right: 1px solid var(--p-content-border-color);
 }
 
 .dsl-editor :deep(.cm-editor.cm-focused) {
@@ -109,11 +137,11 @@ const extensions = [
   scrollbar-gutter: stable;
 }
 
-.dsl-editor.status-syntax-error :deep(.cm-editor) {
+.dsl-editor.status-syntax-error {
   border-left: 3px solid #dc2626;
 }
 
-.dsl-editor.status-warnings :deep(.cm-editor) {
+.dsl-editor.status-warnings {
   border-left: 3px solid #d97706;
 }
 

@@ -22,11 +22,25 @@ const dag = computed(() => store.getDag(route.params.id as string))
 // Layout options
 const useElk = ref(false)
 
-// Generated DSL
+// Read-only header: frontmatter + flowchart directive (depends on ELK toggle)
+const landscapeHeader = computed(() => {
+  const lines = ['---', 'config:', '    theme: neutral']
+  if (useElk.value) lines.push('    layout: elk')
+  lines.push('---', '', 'flowchart TB')
+  return lines.join('\n')
+})
+
+// Generated DSL (guided mode — full DSL including header)
 const generatedDsl = computed(() => {
   if (!dag.value) return ''
   return generateLandscapeDsl(dag.value, { useElk: useElk.value })
 })
+
+// Strips the header (frontmatter + flowchart directive) from a full DSL, returning the body only
+function extractBody(fullDsl: string): string {
+  const match = fullDsl.match(/(?:flowchart|graph)\s+\w+\r?\n([\s\S]*)$/)
+  return match ? match[1] : fullDsl
+}
 
 // Editor mode
 const editMode = ref<'guided' | 'manual'>('guided')
@@ -35,16 +49,24 @@ const modeOptions = [
   { label: 'Edit DSL', value: 'manual' },
 ]
 
-const manualDsl = ref(dag.value?.landscape.mermaidDsl || '')
+// Only the editable body — header is shown read-only above the editor
+const manualDsl = ref('')
+
+// Full DSL passed to MermaidDiagram and validation in manual mode
+const fullManualDsl = computed(() => landscapeHeader.value + '\n' + manualDsl.value)
 
 const activeDsl = computed(() =>
-  editMode.value === 'manual' ? manualDsl.value : generatedDsl.value,
+  editMode.value === 'manual' ? fullManualDsl.value : generatedDsl.value,
 )
 
 function switchToManual() {
-  manualDsl.value = dag.value?.landscape.mermaidDsl || generatedDsl.value
+  const stored = dag.value?.landscape.mermaidDsl
+  // Support old format (full DSL) and new format (body only)
+  manualDsl.value = stored
+    ? (stored.startsWith('---') ? extractBody(stored) : stored)
+    : extractBody(generatedDsl.value)
   editMode.value = 'manual'
-  runValidation(manualDsl.value)
+  runValidation(fullManualDsl.value)
 }
 
 function resetToGuided() {
@@ -56,7 +78,8 @@ function resetToGuided() {
 
 watch(editMode, (mode) => {
   if (mode === 'manual' && dag.value?.landscape.mermaidDsl) {
-    manualDsl.value = dag.value.landscape.mermaidDsl
+    const stored = dag.value.landscape.mermaidDsl
+    manualDsl.value = stored.startsWith('---') ? extractBody(stored) : stored
   }
 })
 
@@ -98,13 +121,13 @@ async function runValidation(code: string) {
 function onDslInput() {
   store.saveLandscapeDsl(dag.value!.id, manualDsl.value)
   if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => runValidation(manualDsl.value), 400)
+  debounceTimer = setTimeout(() => runValidation(fullManualDsl.value), 400)
 }
 
 function syncModel() {
   if (!dag.value || !functionalResult.value) return
   store.syncFromDsl(dag.value.id, functionalResult.value.parsed)
-  runValidation(manualDsl.value)
+  runValidation(fullManualDsl.value)
 }
 
 const hasWarnings = computed(() => (functionalResult.value?.issues.length ?? 0) > 0)
@@ -114,6 +137,15 @@ const completionNames = computed(() =>
   (dag.value?.components ?? [])
     .filter((c) => c.name.trim() !== '')
     .map((c) => toNodeId(c.name)),
+)
+
+// IDs of categories that have at least one named component (drives v-if + v-show)
+const categoryIdsWithComponents = computed(() =>
+  new Set(
+    (dag.value?.components ?? [])
+      .filter((c) => c.name.trim() !== '')
+      .map((c) => c.categoryId),
+  ),
 )
 
 const validationStatus = computed(() => {
@@ -139,14 +171,15 @@ const validationStatus = computed(() => {
       />
 
       <div class="elk-toggle">
-        <ToggleSwitch v-model="useElk" :disabled="editMode === 'manual'" input-id="elk-switch" />
+        <ToggleSwitch v-model="useElk" input-id="elk-switch" />
         <label for="elk-switch">ELK layout</label>
       </div>
 
-      <div v-if="editMode === 'guided'" class="subgraph-options">
+      <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
         <span class="subgraph-label">Subgraphs:</span>
         <label
           v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+          v-show="categoryIdsWithComponents.has(cat.id)"
           :key="cat.id"
           class="toggle-label"
         >
@@ -211,6 +244,7 @@ const validationStatus = computed(() => {
 
         <DslEditor
           :model-value="manualDsl"
+          :read-only-header="landscapeHeader"
           :completion-names="completionNames"
           :validation-status="validationStatus"
           @update:model-value="(v) => { manualDsl = v; onDslInput() }"
