@@ -13,57 +13,14 @@ const COLOR_TITLE_BG  = '1F3864'   // dark blue
 const COLOR_TITLE_FG  = 'FFFFFF'
 const COLOR_ACCENT    = 'F5C400'   // yellow for step bullets
 
-// ─── SVG → PNG via canvas ────────────────────────────────────────────────────
+// ─── Mermaid → SVG data URI ───────────────────────────────────────────────────
 
-async function renderMermaidToPng(
-  dsl: string,
-  canvasW = 1920,
-  canvasH = 1080,
-): Promise<string> {
+async function renderMermaidToSvgDataUrl(dsl: string): Promise<string> {
   const id = `pptx-mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const { svg } = await mermaid.render(id, dsl)
-
-  // Compute the natural aspect ratio from the SVG viewBox
-  const vbMatch = svg.match(/viewBox="([\d\s.]+)"/)
-  let imgW = canvasW
-  let imgH = canvasH
-  if (vbMatch) {
-    const [, , , vbW, vbH] = vbMatch[1].split(/\s+/).map(Number)
-    if (vbW && vbH) {
-      const svgAspect   = vbW / vbH
-      const frameAspect = canvasW / canvasH
-      if (svgAspect > frameAspect) {
-        imgH = canvasW / svgAspect
-      } else {
-        imgW = canvasH * svgAspect
-      }
-    }
-  }
-
-  // Inject explicit pixel dimensions into SVG
-  const sized = svg
-    .replace(/(<svg[^>]*)\s+width="[^"]*"/, `$1 width="${imgW}"`)
-    .replace(/(<svg[^>]*)\s+height="[^"]*"/, `$1 height="${imgH}"`)
-
-  return new Promise<string>((resolve, reject) => {
-    const img = new Image()
-    const blob = new Blob([sized], { type: 'image/svg+xml;charset=utf-8' })
-    const url  = URL.createObjectURL(blob)
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width  = imgW * 2   // 2× for crisp rendering
-      canvas.height = imgH * 2
-      const ctx = canvas.getContext('2d')!
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.scale(2, 2)
-      ctx.drawImage(img, 0, 0, imgW, imgH)
-      URL.revokeObjectURL(url)
-      resolve(canvas.toDataURL('image/png'))
-    }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG render failed')) }
-    img.src = url
-  })
+  // Encode SVG as base64 data URI — avoids canvas tainted-origin restrictions
+  const b64 = btoa(unescape(encodeURIComponent(svg)))
+  return `data:image/svg+xml;base64,${b64}`
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -101,7 +58,7 @@ async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
   addTitleBar(slide, dag.name + ' — Application Landscape')
 
   const dsl = generateLandscapeDsl(dag, { useElk: false })
-  const png = await renderMermaidToPng(dsl, 2400, 1350)
+  const png = await renderMermaidToSvgDataUrl(dsl)
 
   // Image fills the area below the title bar
   const imgY = 0.6
@@ -114,7 +71,7 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flowName: string, flowBod
   addTitleBar(slide, flowName)
 
   const fullDsl = buildSequenceDsl(flowBody, dag)
-  const png = await renderMermaidToPng(fullDsl, 1600, 1200)
+  const png = await renderMermaidToSvgDataUrl(fullDsl)
 
   const contentY = 0.65
   const contentH = SLIDE_H - contentY - 0.1
