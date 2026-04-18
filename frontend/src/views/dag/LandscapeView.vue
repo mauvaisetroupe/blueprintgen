@@ -38,7 +38,7 @@ const activeDsl = computed(() =>
 )
 
 function switchToManual() {
-  manualDsl.value = dag.value?.landscape.mermaidDsl ?? generatedDsl.value
+  manualDsl.value = dag.value?.landscape.mermaidDsl || generatedDsl.value
   editMode.value = 'manual'
   runValidation(manualDsl.value)
 }

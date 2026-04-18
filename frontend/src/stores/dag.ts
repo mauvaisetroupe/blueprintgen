@@ -154,10 +154,10 @@ export const useDagStore = defineStore(
     }
 
     // --- Save landscape DSL ---
-    function saveLandscapeDsl(dagId: string, dsl: string) {
+    function saveLandscapeDsl(dagId: string, dsl: string | undefined) {
       const dag = getDag(dagId)
       if (!dag) return
-      dag.landscape.mermaidDsl = dsl
+      dag.landscape.mermaidDsl = dsl || undefined
       dag.updatedAt = now()
     }
 
