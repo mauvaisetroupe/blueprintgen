@@ -11,6 +11,7 @@ import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
+import RelationSpreadsheet from '@/components/dag/RelationSpreadsheet.vue'
 
 const route = useRoute()
 const store = useDagStore()
@@ -27,10 +28,10 @@ const generatedDsl = computed(() => {
 })
 
 // Editor mode
-const editMode = ref<'generated' | 'manual'>('generated')
+const editMode = ref<'guided' | 'manual'>('guided')
 const modeOptions = [
-  { label: 'Generated', value: 'generated' },
-  { label: 'Edit DSL',  value: 'manual' },
+  { label: 'Guided', value: 'guided' },
+  { label: 'Edit DSL', value: 'manual' },
 ]
 
 const manualDsl = ref(dag.value?.landscape.mermaidDsl || '')
@@ -45,8 +46,8 @@ function switchToManual() {
   runValidation(manualDsl.value)
 }
 
-function resetToGenerated() {
-  editMode.value = 'generated'
+function resetToGuided() {
+  editMode.value = 'guided'
   syntaxError.value = null
   functionalResult.value = null
   if (dag.value) store.saveLandscapeDsl(dag.value.id, undefined)
@@ -126,7 +127,7 @@ const validationStatus = computed(() => {
         :options="modeOptions"
         option-label="label"
         option-value="value"
-        @change="editMode === 'manual' ? switchToManual() : resetToGenerated()"
+        @change="editMode === 'manual' ? switchToManual() : resetToGuided()"
       />
 
       <div class="elk-toggle">
@@ -134,7 +135,7 @@ const validationStatus = computed(() => {
         <label for="elk-switch">ELK layout</label>
       </div>
 
-      <div v-if="editMode === 'generated'" class="subgraph-options">
+      <div v-if="editMode === 'guided'" class="subgraph-options">
         <span class="subgraph-label">Subgraphs:</span>
         <label
           v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
@@ -151,7 +152,7 @@ const validationStatus = computed(() => {
       </div>
 
       <!-- Manual mode actions in toolbar -->
-      <template v-if="editMode === 'manual'">
+      <template v-if="editMode === 'manual'" class="manual-actions">
         <div class="validation-status">
           <span v-if="validationStatus === 'validating'" class="status validating">
             <i class="pi pi-spin pi-spinner" /> Validating…
@@ -176,22 +177,27 @@ const validationStatus = computed(() => {
           @click="syncModel"
         />
         <Button
-          label="Reset to generated"
+          label="Reset to guided"
           icon="pi pi-refresh"
           size="small"
           severity="secondary"
           text
-          @click="resetToGenerated"
+          @click="resetToGuided"
         />
       </template>
     </div>
 
-    <!-- Generated mode: diagram only -->
-    <div v-if="editMode === 'generated'" class="diagram-only">
-      <MermaidDiagram :code="activeDsl" />
-    </div>
+    <!-- Guided mode: relations panel | diagram -->
+    <Splitter v-if="editMode === 'guided'" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
+      <SplitterPanel :size="35" :min-size="20" class="guided-panel">
+        <RelationSpreadsheet :dag="dag" />
+      </SplitterPanel>
+      <SplitterPanel :size="65" :min-size="30" class="diagram-panel">
+        <MermaidDiagram :code="activeDsl" />
+      </SplitterPanel>
+    </Splitter>
 
-    <!-- Manual mode: splitter editor | diagram -->
+    <!-- Manual mode: DSL editor | diagram -->
     <Splitter v-else class="splitter" state-key="landscape-splitter" state-storage="local">
       <SplitterPanel :size="35" :min-size="20" class="editor-panel">
 
@@ -295,6 +301,13 @@ const validationStatus = computed(() => {
   flex: 1;
   min-height: 0;
   border: none !important;
+}
+
+/* Guided panel */
+.guided-panel {
+  overflow: hidden;
+  padding: 0 !important;
+  border-right: 1px solid var(--p-content-border-color);
 }
 
 /* Editor panel */

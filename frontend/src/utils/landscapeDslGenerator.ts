@@ -44,5 +44,23 @@ export function generateLandscapeDsl(dag: Dag, options: LandscapeOptions): strin
     }
   }
 
+  // Relations (arrows)
+  const validComponentIds = new Set(
+    dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id),
+  )
+
+  for (const relation of dag.relations) {
+    if (!validComponentIds.has(relation.fromComponentId) || !validComponentIds.has(relation.toComponentId)) continue
+    const from = dag.components.find((c) => c.id === relation.fromComponentId)!
+    const to   = dag.components.find((c) => c.id === relation.toComponentId)!
+    const fromId = toNodeId(from.name)
+    const toId   = toNodeId(to.name)
+    if (relation.label?.trim()) {
+      lines.push(`  ${fromId} -->|${relation.label.trim()}| ${toId}`)
+    } else {
+      lines.push(`  ${fromId} --> ${toId}`)
+    }
+  }
+
   return lines.join('\n')
 }

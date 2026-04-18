@@ -54,6 +54,15 @@ export interface ApplicationFlow {
   mermaidDsl?: string
 }
 
+// --- Relations ---
+
+export interface Relation {
+  id: string
+  fromComponentId: string
+  toComponentId: string
+  label?: string
+}
+
 // --- DAG root ---
 
 export interface Dag {
@@ -66,6 +75,7 @@ export interface Dag {
   // Shared pool — referenced by all sections
   categories: Category[]
   components: Component[]
+  relations: Relation[]
 
   // Sections
   landscape: Landscape

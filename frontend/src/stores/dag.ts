@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 
 function generateId(): string {
@@ -27,6 +27,7 @@ export const useDagStore = defineStore(
         updatedAt: now(),
         categories: DEFAULT_CATEGORIES.map((c) => ({ ...c, id: generateId() })),
         components: [],
+        relations: [],
         landscape: {},
         technicalLandscape: { components: [] },
         applicationFlows: [],
@@ -78,7 +79,6 @@ export const useDagStore = defineStore(
       const dag = getDag(dagId)
       if (!dag) return
       dag.categories = dag.categories.filter((c) => c.id !== categoryId)
-      // Unassign components that belonged to this category
       dag.components
         .filter((c) => c.categoryId === categoryId)
         .forEach((c) => (c.categoryId = ''))
@@ -114,17 +114,51 @@ export const useDagStore = defineStore(
       const dag = getDag(dagId)
       if (!dag) return
       dag.components = dag.components.filter((c) => c.id !== componentId)
+      // Remove relations involving this component
+      dag.relations = dag.relations.filter(
+        (r) => r.fromComponentId !== componentId && r.toComponentId !== componentId,
+      )
+      dag.updatedAt = now()
+    }
+
+    // --- Relations ---
+
+    function addRelation(dagId: string, fromComponentId: string, toComponentId: string, label?: string): Relation {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const relation: Relation = {
+        id: generateId(),
+        fromComponentId,
+        toComponentId,
+        label,
+      }
+      dag.relations.push(relation)
+      dag.updatedAt = now()
+      return relation
+    }
+
+    function updateRelation(dagId: string, relationId: string, patch: Partial<Omit<Relation, 'id'>>) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      const relation = dag.relations.find((r) => r.id === relationId)
+      if (!relation) return
+      Object.assign(relation, patch)
+      dag.updatedAt = now()
+    }
+
+    function deleteRelation(dagId: string, relationId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.relations = dag.relations.filter((r) => r.id !== relationId)
       dag.updatedAt = now()
     }
 
     // --- Sync model from parsed DSL ---
-    // Creates missing categories/components and moves misplaced components
     function syncFromDsl(dagId: string, parsed: ParsedDsl) {
       const dag = getDag(dagId)
       if (!dag) return
 
       for (const node of parsed.nodes) {
-        // Ensure category exists
         let category = node.subgraph ? dag.categories.find((c) => c.name === node.subgraph) : null
         if (node.subgraph && !category) {
           category = {
@@ -136,7 +170,6 @@ export const useDagStore = defineStore(
           dag.categories.push(category)
         }
 
-        // Find or create component
         const component = dag.components.find((c) => c.name === node.label)
         if (!component) {
           dag.components.push({
@@ -173,11 +206,14 @@ export const useDagStore = defineStore(
       addComponent,
       updateComponent,
       deleteComponent,
+      addRelation,
+      updateRelation,
+      deleteRelation,
       syncFromDsl,
       saveLandscapeDsl,
     }
   },
   {
-    persist: true, // pinia-plugin-persistedstate — uses localStorage by default
+    persist: true,
   },
 )
