@@ -92,6 +92,14 @@ function addToLandscape() {
   for (const rel of missingRelations.value) {
     store.addRelation(dag.value.id, rel.fromCompId, rel.toCompId)
   }
+  // In manual mode, also append the arrows to the stored DSL body so the diagram reflects them
+  if (dag.value.landscape.mode === 'manual') {
+    const arrows = missingRelations.value
+      .map(rel => `  ${toParticipantId(rel.fromName)} --> ${toParticipantId(rel.toName)}`)
+      .join('\n')
+    const current = dag.value.landscape.mermaidDsl ?? ''
+    store.saveLandscapeDsl(dag.value.id, current + '\n' + arrows)
+  }
 }
 
 // --- Flow CRUD ---
@@ -197,7 +205,7 @@ function updateDescription(e: Event) {
           </div>
 
           <!-- Auto-sync mode: all relations are live in landscape -->
-          <div v-if="landscapeAutoSync && dag.applicationFlows.length > 0" class="issue-list synced-list">
+          <div v-if="landscapeAutoSync && dag.applicationFlows.length > 0 && !syntaxError && unknownParticipants.length === 0" class="issue-list synced-list">
             <div class="issue-item">
               <i class="pi pi-check-circle" />
               <span>Relations synced with landscape (auto-sync mode)</span>
