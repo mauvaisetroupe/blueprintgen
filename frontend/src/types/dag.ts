@@ -16,8 +16,11 @@ export interface Component {
 
 // --- Landscape section ---
 
+export type LandscapeMode = 'guided' | 'manual' | 'autosync'
+
 export interface Landscape {
   mermaidDsl?: string // manually edited DSL overrides generated one
+  mode?: LandscapeMode
 }
 
 // --- Technical landscape section ---

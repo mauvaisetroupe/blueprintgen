@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { generateLandscapeDsl, toNodeId } from '@/utils/landscapeDslGenerator'
+import { collectAllFlowRelations } from '@/utils/sequenceDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
@@ -42,11 +43,12 @@ function extractBody(fullDsl: string): string {
   return match ? match[1] : fullDsl
 }
 
-// Editor mode
-const editMode = ref<'guided' | 'manual'>('guided')
+// Editor mode — persisted in store
+const editMode = ref<'guided' | 'manual' | 'autosync'>(dag.value?.landscape.mode ?? 'guided')
 const modeOptions = [
-  { label: 'Guided', value: 'guided' },
-  { label: 'Edit DSL', value: 'manual' },
+  { label: 'Guided',    value: 'guided' },
+  { label: 'Edit DSL',  value: 'manual' },
+  { label: 'Auto-sync', value: 'autosync' },
 ]
 
 // Only the editable body — header is shown read-only above the editor
@@ -55,17 +57,26 @@ const manualDsl = ref('')
 // Full DSL passed to MermaidDiagram and validation in manual mode
 const fullManualDsl = computed(() => landscapeHeader.value + '\n' + manualDsl.value)
 
-const activeDsl = computed(() =>
-  editMode.value === 'manual' ? fullManualDsl.value : generatedDsl.value,
-)
+// Auto-sync DSL: components + relations derived from all sequence flows
+const autoSyncDsl = computed(() => {
+  if (!dag.value) return ''
+  const flowRelations = collectAllFlowRelations(dag.value)
+  return generateLandscapeDsl(dag.value, { useElk: useElk.value }, flowRelations)
+})
+
+const activeDsl = computed(() => {
+  if (editMode.value === 'manual')   return fullManualDsl.value
+  if (editMode.value === 'autosync') return autoSyncDsl.value
+  return generatedDsl.value
+})
 
 function switchToManual() {
   const stored = dag.value?.landscape.mermaidDsl
-  // Support old format (full DSL) and new format (body only)
   manualDsl.value = stored
     ? (stored.startsWith('---') ? extractBody(stored) : stored)
     : extractBody(generatedDsl.value)
   editMode.value = 'manual'
+  if (dag.value) store.setLandscapeMode(dag.value.id, 'manual')
   runValidation(fullManualDsl.value)
 }
 
@@ -73,7 +84,17 @@ function resetToGuided() {
   editMode.value = 'guided'
   syntaxError.value = null
   functionalResult.value = null
-  if (dag.value) store.saveLandscapeDsl(dag.value.id, undefined)
+  if (dag.value) {
+    store.setLandscapeMode(dag.value.id, 'guided')
+    store.saveLandscapeDsl(dag.value.id, undefined)
+  }
+}
+
+function switchToAutoSync() {
+  editMode.value = 'autosync'
+  syntaxError.value = null
+  functionalResult.value = null
+  if (dag.value) store.setLandscapeMode(dag.value.id, 'autosync')
 }
 
 watch(editMode, (mode) => {
@@ -167,7 +188,7 @@ const validationStatus = computed(() => {
         :options="modeOptions"
         option-label="label"
         option-value="value"
-        @change="editMode === 'manual' ? switchToManual() : resetToGuided()"
+        @change="editMode === 'manual' ? switchToManual() : editMode === 'autosync' ? switchToAutoSync() : resetToGuided()"
       />
 
       <div class="elk-toggle">
@@ -228,8 +249,13 @@ const validationStatus = computed(() => {
       </template>
     </div>
 
+    <!-- Auto-sync mode: diagram only (read-only) -->
+    <div v-if="editMode === 'autosync'" class="diagram-panel autosync-panel">
+      <MermaidDiagram :code="activeDsl" />
+    </div>
+
     <!-- Guided mode: relations panel | diagram -->
-    <Splitter v-if="editMode === 'guided'" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
+    <Splitter v-else-if="editMode === 'guided'" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
       <SplitterPanel :size="35" :min-size="20" class="guided-panel">
         <RelationSpreadsheet :dag="dag" />
       </SplitterPanel>
@@ -366,6 +392,13 @@ const validationStatus = computed(() => {
   display: flex;
   align-items: flex-start;
   justify-content: center;
+}
+
+.autosync-panel {
+  flex: 1;
+  min-height: 0;
+  padding: 1rem;
+  overflow: auto;
 }
 
 /* Issue lists */

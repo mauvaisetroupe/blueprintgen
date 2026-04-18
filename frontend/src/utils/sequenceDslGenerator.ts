@@ -13,6 +13,29 @@ export interface MissingLandscapeRelation {
   toName: string
 }
 
+// Collects all unique component-level relations across all application flows
+export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComponentId: string }> {
+  const seen = new Set<string>()
+  const result: Array<{ fromComponentId: string; toComponentId: string }> = []
+  const arrowRegex = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+
+  for (const flow of dag.applicationFlows) {
+    if (!flow.mermaidDsl?.trim()) continue
+    for (const raw of flow.mermaidDsl.split('\n')) {
+      const match = raw.trim().match(arrowRegex)
+      if (!match) continue
+      const fromComp = dag.components.find((c) => toNodeId(c.name) === match[1])
+      const toComp   = dag.components.find((c) => toNodeId(c.name) === match[2])
+      if (!fromComp || !toComp) continue
+      const key = `${fromComp.id}->${toComp.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ fromComponentId: fromComp.id, toComponentId: toComp.id })
+    }
+  }
+  return result
+}
+
 // Parses sequence diagram body and returns relations missing from the landscape model
 export function findMissingLandscapeRelations(body: string, dag: Dag): MissingLandscapeRelation[] {
   // Matches: participantA ->> participantB, A --> B, A -x B, A ->>+ B, etc.

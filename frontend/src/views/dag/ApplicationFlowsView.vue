@@ -80,6 +80,8 @@ const missingRelations = computed(() => {
   return findMissingLandscapeRelations(editorDsl.value, dag.value)
 })
 
+const landscapeAutoSync = computed(() => dag.value?.landscape.mode === 'autosync')
+
 function addToLandscape() {
   if (!dag.value) return
   for (const rel of missingRelations.value) {
@@ -181,7 +183,16 @@ function updateDescription(e: Event) {
             </div>
           </div>
 
-          <div v-if="missingRelations.length > 0" class="issue-list warning-list">
+          <!-- Auto-sync mode: all relations are live in landscape -->
+          <div v-if="landscapeAutoSync && dag.applicationFlows.length > 0" class="issue-list synced-list">
+            <div class="issue-item">
+              <i class="pi pi-check-circle" />
+              <span>Relations synced with landscape (auto-sync mode)</span>
+            </div>
+          </div>
+
+          <!-- Manual/guided mode: show missing relations -->
+          <div v-else-if="!landscapeAutoSync && missingRelations.length > 0" class="issue-list warning-list">
             <div class="warning-header">
               <span><i class="pi pi-exclamation-triangle" /> {{ missingRelations.length }} relation(s) not in landscape</span>
               <Button
@@ -363,6 +374,7 @@ function updateDescription(e: Event) {
 
 .error-list   { background: #fef2f2; border-top: 1px solid #fca5a5; color: #dc2626; }
 .warning-list { background: #fffbeb; border-top: 1px solid #fcd34d; color: #92400e; }
+.synced-list  { background: #f0fdf4; border-top: 1px solid #86efac; color: #166534; }
 
 .warning-header {
   display: flex;

@@ -9,7 +9,11 @@ export interface LandscapeOptions {
   useElk: boolean
 }
 
-export function generateLandscapeDsl(dag: Dag, options: LandscapeOptions): string {
+export function generateLandscapeDsl(
+  dag: Dag,
+  options: LandscapeOptions,
+  relationsOverride?: Array<{ fromComponentId: string; toComponentId: string; label?: string }>,
+): string {
   const lines: string[] = []
 
   // Frontmatter config
@@ -49,7 +53,7 @@ export function generateLandscapeDsl(dag: Dag, options: LandscapeOptions): strin
     dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id),
   )
 
-  for (const relation of dag.relations) {
+  for (const relation of (relationsOverride ?? dag.relations)) {
     if (!validComponentIds.has(relation.fromComponentId) || !validComponentIds.has(relation.toComponentId)) continue
     const from = dag.components.find((c) => c.id === relation.fromComponentId)!
     const to   = dag.components.find((c) => c.id === relation.toComponentId)!

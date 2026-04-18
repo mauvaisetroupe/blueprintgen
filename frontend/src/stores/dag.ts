@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type LandscapeMode, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -272,6 +272,13 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    function setLandscapeMode(dagId: string, mode: LandscapeMode) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.landscape.mode = mode
+      dag.updatedAt = now()
+    }
+
     return {
       dags,
       createDag,
@@ -289,6 +296,7 @@ export const useDagStore = defineStore(
       deleteRelation,
       syncFromDsl,
       saveLandscapeDsl,
+      setLandscapeMode,
       addFlow,
       updateFlow,
       deleteFlow,
