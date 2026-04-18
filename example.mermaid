@@ -22,13 +22,28 @@ flowchart TB
   subgraph External Systems
     payment_service["Payment Service"]
   end
-  internet_user -->|HTTPS| webfrontend
-  webfrontend --> api_backend
-  api_backend --> catalogservice
-  api_backend --> commandservice
-  catalogservice --> mydb
-  commandservice --> mydb
-  commandservice --> ordering_service
-  ordering_service --> payment_service
-  ordering_service --> mydb
-  commandservice --> catalogservice
+
+
+BAD
+
+End user browses the product catalog
+internet_user ->> webfrontend: Browse catalog
+webfrontend ->> api_backend: GET /catalog
+api_backend ->> catalog_service: fetchProducts()
+catalog_service ->> mydb_storage: SELECT products
+mydb_storage -->> catalog_service: products[]
+catalog_service -->> api_backend: products[]
+api_backend -->> webfrontend: 200 OK
+webfrontend -->> internet_user: Display catalog
+
+GOOD
+
+End user browses the product catalog
+internet_user ->> webfrontend: Browse catalog
+webfrontend ->> api_backend: GET /catalog
+api_backend ->> catalogservice: fetchProducts()
+catalogservice ->> mydb: SELECT products
+mydb -->> catalogservice: products[]
+catalogservice -->> api_backend: products[]
+api_backend -->> webfrontend: 200 OK
+webfrontend -->> internet_user: Display catalog

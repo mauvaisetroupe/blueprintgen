@@ -204,8 +204,8 @@ function updateDescription(e: Event) {
             </div>
           </div>
 
-          <!-- Manual/guided mode: show missing relations -->
-          <div v-else-if="!landscapeAutoSync && missingRelations.length > 0" class="issue-list warning-list">
+          <!-- Manual/guided mode: show missing relations (only when all participants are known) -->
+          <div v-else-if="!landscapeAutoSync && missingRelations.length > 0 && unknownParticipants.length === 0" class="issue-list warning-list">
             <div class="warning-header">
               <span><i class="pi pi-exclamation-triangle" /> {{ missingRelations.length }} relation(s) not in landscape</span>
               <Button
