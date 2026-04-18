@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { type Dag, type Category, type Component, type Relation, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
+import { toNodeId } from '@/utils/landscapeDslGenerator'
 
 function generateId(): string {
   return crypto.randomUUID()
@@ -190,14 +191,18 @@ export const useDagStore = defineStore(
       console.log('[syncFromDsl] parsed.relations:', parsed.relations)
       console.log('[syncFromDsl] parsed.nodes:', parsed.nodes.map(n => `${n.id}="${n.label}"`))
       for (const parsedRel of parsed.relations) {
-        // Resolve node IDs to component names via parsed nodes, then to model components
         const fromNode = parsed.nodes.find((n) => n.id === parsedRel.fromId)
         const toNode   = parsed.nodes.find((n) => n.id === parsedRel.toId)
         console.log(`[syncFromDsl] rel ${parsedRel.fromId}->${parsedRel.toId}: fromNode=${fromNode?.label}, toNode=${toNode?.label}`)
-        if (!fromNode || !toNode) { console.log('[syncFromDsl] SKIP: node not found'); continue }
 
-        const fromComp = dag.components.find((c) => c.name === fromNode.label)
-        const toComp   = dag.components.find((c) => c.name === toNode.label)
+        // Primary: resolve via node declaration label; fallback: match by derived node ID
+        const fromComp =
+          (fromNode ? dag.components.find((c) => c.name === fromNode.label) : undefined)
+          ?? dag.components.find((c) => toNodeId(c.name) === parsedRel.fromId)
+        const toComp =
+          (toNode ? dag.components.find((c) => c.name === toNode.label) : undefined)
+          ?? dag.components.find((c) => toNodeId(c.name) === parsedRel.toId)
+
         console.log(`[syncFromDsl] fromComp=${fromComp?.name}, toComp=${toComp?.name}`)
         if (!fromComp || !toComp) { console.log('[syncFromDsl] SKIP: component not found'); continue }
 
