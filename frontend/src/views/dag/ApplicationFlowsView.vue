@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, toParticipantId } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, toParticipantId } from '@/utils/sequenceDslGenerator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
@@ -28,10 +28,15 @@ const editorDsl = ref('')
 const syntaxError = ref<string | null>(null)
 const isValidating = ref(false)
 
+// Full DSL sent to Mermaid (auto-injected participants + body)
+const renderedDsl = computed(() =>
+  dag.value ? buildSequenceDsl(editorDsl.value, dag.value) : '',
+)
+
 watch(selectedFlow, (flow) => {
   editorDsl.value = flow?.mermaidDsl ?? ''
   syntaxError.value = null
-  if (flow?.mermaidDsl) runValidation(flow.mermaidDsl)
+  if (flow?.mermaidDsl && dag.value) runValidation(buildSequenceDsl(flow.mermaidDsl, dag.value))
 }, { immediate: true })
 
 // Autocomplete: participant IDs derived from component names
@@ -60,7 +65,7 @@ function onDslChange(value: string) {
   if (!selectedFlow.value || !dag.value) return
   store.updateFlow(dag.value.id, selectedFlow.value.id, { mermaidDsl: value })
   if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => runValidation(value), 400)
+  debounceTimer = setTimeout(() => runValidation(buildSequenceDsl(value, dag.value!)), 400)
 }
 
 const validationStatus = computed(() => {
@@ -72,8 +77,7 @@ const validationStatus = computed(() => {
 // --- Flow CRUD ---
 function addFlow() {
   if (!dag.value) return
-  const skeleton = generateFlowSkeleton(dag.value)
-  const flow = store.addFlow(dag.value.id, 'New flow', '', skeleton)
+  const flow = store.addFlow(dag.value.id, 'New flow', '', generateFlowSkeleton())
   selectedFlowId.value = flow.id
 }
 
@@ -167,7 +171,7 @@ function updateDescription(e: Event) {
         </SplitterPanel>
 
         <SplitterPanel :size="60" :min-size="30" class="diagram-panel">
-          <MermaidDiagram :code="editorDsl" />
+          <MermaidDiagram :code="renderedDsl" />
         </SplitterPanel>
       </Splitter>
     </div>
