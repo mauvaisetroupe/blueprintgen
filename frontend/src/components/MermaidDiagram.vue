@@ -14,15 +14,24 @@ mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' })
 async function render() {
   if (!container.value || !props.code.trim()) return
   error.value = null
+
+  // Validate first — prevents Mermaid from rendering its own bomb/error SVG
+  try {
+    await mermaid.parse(props.code)
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : 'Invalid diagram syntax'
+    const cleaned = raw.replace(/^Syntax error in text\s*\nmermaid version [\d.]+\s*\n?/i, '').trim()
+    error.value = cleaned || 'Invalid diagram syntax'
+    container.value.innerHTML = ''
+    return
+  }
+
   try {
     const id = `mermaid-${Date.now()}`
     const { svg } = await mermaid.render(id, props.code)
     container.value.innerHTML = svg
   } catch (e) {
-    // Extract the useful part of Mermaid error messages (strip "Syntax error in text\nmermaid version x.x.x")
-    const raw = e instanceof Error ? e.message : 'Invalid diagram syntax'
-    const cleaned = raw.replace(/^Syntax error in text\s*\nmermaid version [\d.]+\s*\n?/i, '').trim()
-    error.value = cleaned || 'Invalid diagram syntax'
+    error.value = e instanceof Error ? e.message : 'Render error'
     container.value.innerHTML = ''
   }
 }
