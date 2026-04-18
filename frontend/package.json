@@ -15,6 +15,11 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.1",
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.0",
     "@primevue/themes": "^4.5.4",
     "mermaid": "^11.14.0",
     "pinia": "^3.0.4",
@@ -22,6 +27,7 @@
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
     "vue": "^3.5.31",
+    "vue-codemirror": "^6.1.1",
     "vue-router": "^5.0.4"
   },
   "devDependencies": {

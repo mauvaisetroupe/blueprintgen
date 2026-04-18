@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateLandscapeDsl } from '@/utils/landscapeDslGenerator'
+import { generateLandscapeDsl, toNodeId } from '@/utils/landscapeDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
@@ -12,6 +12,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import RelationSpreadsheet from '@/components/dag/RelationSpreadsheet.vue'
+import DslEditor from '@/components/DslEditor.vue'
 
 const route = useRoute()
 const store = useDagStore()
@@ -108,6 +109,13 @@ function syncModel() {
 
 const hasWarnings = computed(() => (functionalResult.value?.issues.length ?? 0) > 0)
 
+// Node IDs for DSL autocompletion
+const completionNames = computed(() =>
+  (dag.value?.components ?? [])
+    .filter((c) => c.name.trim() !== '')
+    .map((c) => toNodeId(c.name)),
+)
+
 const validationStatus = computed(() => {
   if (isValidating.value)          return 'validating'
   if (syntaxError.value)           return 'syntax-error'
@@ -201,14 +209,11 @@ const validationStatus = computed(() => {
     <Splitter v-else class="splitter" state-key="landscape-splitter" state-storage="local">
       <SplitterPanel :size="35" :min-size="20" class="editor-panel">
 
-        <textarea
-          v-model="manualDsl"
-          spellcheck="false"
-          :class="{
-            'has-syntax-error': validationStatus === 'syntax-error',
-            'has-warnings':     validationStatus === 'warnings',
-          }"
-          @input="onDslInput"
+        <DslEditor
+          :model-value="manualDsl"
+          :completion-names="completionNames"
+          :validation-status="validationStatus"
+          @update:model-value="(v) => { manualDsl = v; onDslInput() }"
         />
 
         <!-- Syntax error -->
@@ -319,35 +324,6 @@ const validationStatus = computed(() => {
   padding: 0 !important;
 }
 
-.editor-panel textarea {
-  flex: 1;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  padding: 1rem;
-  border: none;
-  border-right: 1px solid var(--p-content-border-color);
-  resize: none;
-  background: var(--p-surface-50, #fafafa);
-  color: var(--p-text-color);
-  outline: none;
-  transition: background 0.2s;
-  min-height: 0;
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-}
-
-.editor-panel textarea:focus {
-  background: var(--p-surface-0);
-}
-
-.editor-panel textarea.has-syntax-error {
-  border-left: 3px solid #dc2626;
-}
-
-.editor-panel textarea.has-warnings {
-  border-left: 3px solid #d97706;
-}
 
 /* Diagram panel */
 .diagram-panel {

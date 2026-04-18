@@ -1,7 +1,7 @@
 import type { Dag } from '@/types/dag'
 
 // Converts a component name to a valid Mermaid node ID
-function toNodeId(name: string): string {
+export function toNodeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
 }
 
