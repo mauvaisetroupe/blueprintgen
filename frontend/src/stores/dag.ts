@@ -187,20 +187,25 @@ export const useDagStore = defineStore(
       }
 
       // Sync relations from parsed arrows
+      console.log('[syncFromDsl] parsed.relations:', parsed.relations)
+      console.log('[syncFromDsl] parsed.nodes:', parsed.nodes.map(n => `${n.id}="${n.label}"`))
       for (const parsedRel of parsed.relations) {
         // Resolve node IDs to component names via parsed nodes, then to model components
         const fromNode = parsed.nodes.find((n) => n.id === parsedRel.fromId)
         const toNode   = parsed.nodes.find((n) => n.id === parsedRel.toId)
-        if (!fromNode || !toNode) continue
+        console.log(`[syncFromDsl] rel ${parsedRel.fromId}->${parsedRel.toId}: fromNode=${fromNode?.label}, toNode=${toNode?.label}`)
+        if (!fromNode || !toNode) { console.log('[syncFromDsl] SKIP: node not found'); continue }
 
         const fromComp = dag.components.find((c) => c.name === fromNode.label)
         const toComp   = dag.components.find((c) => c.name === toNode.label)
-        if (!fromComp || !toComp) continue
+        console.log(`[syncFromDsl] fromComp=${fromComp?.name}, toComp=${toComp?.name}`)
+        if (!fromComp || !toComp) { console.log('[syncFromDsl] SKIP: component not found'); continue }
 
         // Add only if relation doesn't already exist
         const exists = dag.relations.some(
           (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
         )
+        console.log(`[syncFromDsl] exists=${exists}`)
         if (!exists) {
           dag.relations.push({
             id: generateId(),
@@ -208,6 +213,7 @@ export const useDagStore = defineStore(
             toComponentId: toComp.id,
             label: parsedRel.label,
           })
+          console.log('[syncFromDsl] PUSHED relation', fromComp.name, '->', toComp.name)
         }
       }
 
