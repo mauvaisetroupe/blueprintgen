@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, buildSequenceDsl, toParticipantId, findMissingLandscapeRelations } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, toParticipantId, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
@@ -78,6 +78,11 @@ const validationStatus = computed(() => {
 const missingRelations = computed(() => {
   if (!dag.value || !editorDsl.value.trim()) return []
   return findMissingLandscapeRelations(editorDsl.value, dag.value)
+})
+
+const unknownParticipants = computed(() => {
+  if (!dag.value || !editorDsl.value.trim()) return []
+  return findUnknownParticipants(editorDsl.value, dag.value)
 })
 
 const landscapeAutoSync = computed(() => dag.value?.landscape.mode === 'autosync')
@@ -180,6 +185,14 @@ function updateDescription(e: Event) {
             <div class="issue-item">
               <i class="pi pi-times-circle" />
               <span>{{ syntaxError }}</span>
+            </div>
+          </div>
+
+          <!-- Unknown participants -->
+          <div v-if="unknownParticipants.length > 0" class="issue-list error-list">
+            <div class="issue-item">
+              <i class="pi pi-question-circle" />
+              <span>Unknown participants (not in model): <strong>{{ unknownParticipants.join(', ') }}</strong></span>
             </div>
           </div>
 

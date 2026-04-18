@@ -36,6 +36,20 @@ export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: stri
   return result
 }
 
+// Returns participant IDs used in arrows but not matching any known component
+export function findUnknownParticipants(body: string, dag: Dag): string[] {
+  const arrowRegex = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
+  const knownIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => toNodeId(c.name)))
+  const unknown = new Set<string>()
+  for (const raw of body.split('\n')) {
+    const match = raw.trim().match(arrowRegex)
+    if (!match) continue
+    if (!knownIds.has(match[1])) unknown.add(match[1])
+    if (!knownIds.has(match[2])) unknown.add(match[2])
+  }
+  return [...unknown]
+}
+
 // Parses sequence diagram body and returns relations missing from the landscape model
 export function findMissingLandscapeRelations(body: string, dag: Dag): MissingLandscapeRelation[] {
   // Matches: participantA ->> participantB, A --> B, A -x B, A ->>+ B, etc.

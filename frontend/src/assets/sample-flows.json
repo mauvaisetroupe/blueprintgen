@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Browse catalog",
+    "description": "End user browses the product catalog",
+    "mermaidDsl": "internet_user ->> webfrontend: Browse catalog\nwebfrontend ->> api_backend: GET /catalog\napi_backend ->> catalog_service: fetchProducts()\ncatalog_service ->> mydb_storage: SELECT products\nmydb_storage -->> catalog_service: products[]\ncatalog_service -->> api_backend: products[]\napi_backend -->> webfrontend: 200 OK\nwebfrontend -->> internet_user: Display catalog"
+  },
+  {
+    "name": "Place order",
+    "description": "End user places an order — stock check, payment, persistence",
+    "mermaidDsl": "internet_user ->> webfrontend: Place order\nwebfrontend ->> api_backend: POST /orders\napi_backend ->> command_service: createOrder()\ncommand_service ->> catalog_service: checkStock()\ncatalog_service ->> mydb_storage: SELECT stock\nmydb_storage -->> catalog_service: stock\ncatalog_service -->> command_service: stockOk\ncommand_service ->> mydb_storage: INSERT order\ncommand_service ->> ordering_service: processOrder()\nordering_service ->> payment_service: processPayment()\npayment_service -->> ordering_service: paymentConfirmed\nordering_service ->> mydb_storage: UPDATE order status\nordering_service -->> command_service: orderConfirmed\ncommand_service -->> api_backend: orderId\napi_backend -->> webfrontend: 201 Created\nwebfrontend -->> internet_user: Order confirmed"
+  },
+  {
+    "name": "Check order status",
+    "description": "End user checks the status of an existing order",
+    "mermaidDsl": "internet_user ->> webfrontend: Check order status\nwebfrontend ->> api_backend: GET /orders/{id}\napi_backend ->> ordering_service: getOrderStatus()\nordering_service ->> mydb_storage: SELECT order\nmydb_storage -->> ordering_service: order\nordering_service -->> api_backend: orderStatus\napi_backend -->> webfrontend: 200 OK\nwebfrontend -->> internet_user: Display status"
+  },
+  {
+    "name": "Update catalog (admin)",
+    "description": "Admin updates a product in the catalog",
+    "mermaidDsl": "internet_user ->> webfrontend: Update product\nwebfrontend ->> api_backend: PUT /catalog/{id}\napi_backend ->> command_service: updateProduct()\ncommand_service ->> catalog_service: updateCatalogEntry()\ncatalog_service ->> mydb_storage: UPDATE product\nmydb_storage -->> catalog_service: updated\ncatalog_service -->> command_service: ok\ncommand_service -->> api_backend: success\napi_backend -->> webfrontend: 200 OK\nwebfrontend -->> internet_user: Product updated"
+  }
+]
