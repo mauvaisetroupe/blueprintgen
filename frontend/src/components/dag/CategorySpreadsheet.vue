@@ -2,6 +2,7 @@
 import { ref, nextTick } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { Category, Component } from '@/types/dag'
+import { toNodeId } from '@/utils/landscapeDslGenerator'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 
@@ -148,6 +149,7 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
         <tr>
           <th class="col-name">Name</th>
           <th class="col-desc">Description</th>
+          <th class="col-id">ID</th>
           <th class="col-actions"></th>
         </tr>
       </thead>
@@ -174,6 +176,9 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
               @keydown="onKeydown($event, rowIndex, 1)"
               @paste="onPaste($event, rowIndex, 1)"
             />
+          </td>
+          <td class="col-id">
+            <span class="node-id">{{ component.name ? toNodeId(component.name) : '' }}</span>
           </td>
           <td class="col-actions">
             <Button
@@ -272,7 +277,16 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
   opacity: 0.5;
 }
 
-.col-name { width: 30%; }
-.col-desc { width: 65%; }
+.col-name    { width: 25%; }
+.col-id      { width: 20%; }
+.col-desc    { width: 50%; }
 .col-actions { width: 40px; }
+
+.node-id {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  color: var(--p-text-muted-color);
+  padding: 0.2rem 0.4rem;
+  user-select: all;
+}
 </style>

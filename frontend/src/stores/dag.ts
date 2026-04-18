@@ -174,7 +174,11 @@ export const useDagStore = defineStore(
           dag.categories.push(category)
         }
 
-        const component = dag.components.find((c) => c.name === node.label)
+        // Match by label first; fallback to node ID (handles renames in the DSL)
+        const component =
+          dag.components.find((c) => c.name === node.label)
+          ?? dag.components.find((c) => toNodeId(c.name) === node.id)
+
         if (!component) {
           dag.components.push({
             id: generateId(),
@@ -182,8 +186,10 @@ export const useDagStore = defineStore(
             description: '',
             categoryId: category?.id ?? '',
           })
-        } else if (category && component.categoryId !== category.id) {
-          component.categoryId = category.id
+        } else {
+          // Update name if it changed (rename case)
+          if (component.name !== node.label) component.name = node.label
+          if (category && component.categoryId !== category.id) component.categoryId = category.id
         }
       }
 
