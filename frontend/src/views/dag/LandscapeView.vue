@@ -39,7 +39,7 @@ const generatedDsl = computed(() => {
 
 // Strips the header (frontmatter + flowchart directive) from a full DSL, returning the body only
 function extractBody(fullDsl: string): string {
-  const match = fullDsl.match(/(?:flowchart|graph)\s+\w+\r?\n([\s\S]*)$/)
+  const match = fullDsl.match(/(?:flowchart|graph)\s+\w+\r?\n?([\s\S]*)$/)
   return match ? match[1] : fullDsl
 }
 
@@ -52,7 +52,17 @@ const modeOptions = [
 ]
 
 // Only the editable body — header is shown read-only above the editor
-const manualDsl = ref('')
+// Initialized from store on mount so navigation away/back preserves the content
+function loadStoredBody(): string {
+  const stored = dag.value?.landscape.mermaidDsl
+  if (!stored) return ''
+  // Strip header whether stored as full DSL (starts with --- or flowchart/graph)
+  if (stored.startsWith('---') || /^(?:flowchart|graph)\s/m.test(stored)) {
+    return extractBody(stored)
+  }
+  return stored
+}
+const manualDsl = ref(loadStoredBody())
 
 // Full DSL passed to MermaidDiagram and validation in manual mode
 const fullManualDsl = computed(() => landscapeHeader.value + '\n' + manualDsl.value)
@@ -73,7 +83,7 @@ const activeDsl = computed(() => {
 function switchToManual() {
   const stored = dag.value?.landscape.mermaidDsl
   manualDsl.value = stored
-    ? (stored.startsWith('---') ? extractBody(stored) : stored)
+    ? loadStoredBody()
     : extractBody(generatedDsl.value)
   editMode.value = 'manual'
   if (dag.value) store.setLandscapeMode(dag.value.id, 'manual')
@@ -98,10 +108,7 @@ function switchToAutoSync() {
 }
 
 watch(editMode, (mode) => {
-  if (mode === 'manual' && dag.value?.landscape.mermaidDsl) {
-    const stored = dag.value.landscape.mermaidDsl
-    manualDsl.value = stored.startsWith('---') ? extractBody(stored) : stored
-  }
+  if (mode === 'manual') manualDsl.value = loadStoredBody()
 })
 
 // Subgraph toggles
