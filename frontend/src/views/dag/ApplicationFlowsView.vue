@@ -95,6 +95,11 @@ const renderedDsl = computed(() => {
   return buildSequenceDsl(editorDsl.value, dag.value)
 })
 
+// Sélectionne le premier flow au chargement si aucun n'est sélectionné
+if (!selectedFlowId.value && dag.value?.applicationFlows.length) {
+  selectedFlowId.value = dag.value.applicationFlows[0].id
+}
+
 watch(selectedFlow, (flow) => {
   editorDsl.value = flow?.mermaidDsl ?? ''
   syntaxError.value = null
