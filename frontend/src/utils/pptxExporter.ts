@@ -3,6 +3,7 @@ import mermaid from 'mermaid'
 import type { Dag } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
 import { buildSequenceDsl } from './sequenceDslGenerator'
+import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
 
 // Widescreen 13.33" × 7.5"
 const SLIDE_W = 13.33
@@ -13,14 +14,82 @@ const COLOR_TITLE_BG  = '1F3864'   // dark blue
 const COLOR_TITLE_FG  = 'FFFFFF'
 const COLOR_ACCENT    = 'F5C400'   // yellow for step bullets
 
-// ─── Mermaid → SVG data URI ───────────────────────────────────────────────────
+// ─── Mermaid → PNG via canvas ────────────────────────────────────────────────
+//
+// Strategy: SVG → canvas → PNG data URL.
+// Why canvas instead of embedding SVG directly in PowerPoint:
+//   • PowerPoint's SVG renderer ignores <style> blocks → CSS variables unresolved
+//     → black cluster backgrounds, missing colours.
+//   • Even with inlined styles, PowerPoint's renderer drops some SVG features
+//     (e.g. some path/marker combinations used by Mermaid for arrows).
+//   • Canvas rasterises exactly what the browser sees → pixel-perfect in PPT.
+//
+// Why htmlLabels: false is required:
+//   • Mermaid flowcharts use <foreignObject> for node labels by default.
+//   • Drawing an SVG containing <foreignObject> to a canvas taints it
+//     (security restriction) → toDataURL() throws SecurityError.
+//   • htmlLabels: false makes Mermaid use SVG <text> elements instead.
+//   • Sequence diagrams already use <text> natively → unaffected.
+//
+// Resolution: 2× for crisp rendering on high-DPI screens.
 
-async function renderMermaidToSvgDataUrl(dsl: string): Promise<string> {
+const PNG_SCALE = 2
+
+// Mermaid SVGs often have width/height as percentages or rely on max-width CSS,
+// making img.naturalWidth unreliable (returns a small default like 0 or 100).
+// This causes the canvas to be too small and only the top-left corner is drawn.
+// Fix: read the viewBox and stamp explicit pixel width/height onto the SVG element.
+function normalizeSvgDimensions(svgString: string): string {
+  const div = document.createElement('div')
+  div.innerHTML = svgString
+  const svg = div.querySelector('svg')
+  if (!svg) return svgString
+
+  const vb = svg.getAttribute('viewBox')
+  if (vb) {
+    const parts = vb.trim().split(/[\s,]+/).map(Number)
+    if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
+      svg.setAttribute('width',  String(parts[2]))
+      svg.setAttribute('height', String(parts[3]))
+      svg.style.maxWidth = ''   // remove any interfering CSS max-width
+    }
+  }
+  return svg.outerHTML
+}
+
+function svgToPngDataUrl(svgString: string): Promise<string> {
+  const normalized = normalizeSvgDimensions(svgString)
+  return new Promise((resolve, reject) => {
+    const b64 = btoa(unescape(encodeURIComponent(normalized)))
+    const img = new Image()
+    img.onload = () => {
+      const w = img.naturalWidth  || 1200
+      const h = img.naturalHeight || 700
+      const canvas = document.createElement('canvas')
+      canvas.width  = w * PNG_SCALE
+      canvas.height = h * PNG_SCALE
+      const ctx = canvas.getContext('2d')!
+      ctx.scale(PNG_SCALE, PNG_SCALE)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0)
+      try {
+        resolve(canvas.toDataURL('image/png'))
+      } catch (e) {
+        reject(new Error(`Canvas tainted — SVG may contain cross-origin resources: ${e}`))
+      }
+    }
+    img.onerror = (e) => reject(new Error(`Failed to load SVG into Image element: ${e}`))
+    img.src = `data:image/svg+xml;base64,${b64}`
+  })
+}
+
+async function renderMermaidToPng(dsl: string): Promise<string> {
   const id = `pptx-mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  const { svg } = await mermaid.render(id, dsl)
-  // Encode SVG as base64 data URI — avoids canvas tainted-origin restrictions
-  const b64 = btoa(unescape(encodeURIComponent(svg)))
-  return `data:image/svg+xml;base64,${b64}`
+  // injectHtmlLabelsFalse: avoids <foreignObject> → canvas stays untainted
+  // inlineSvgStyles: resolves CSS var() on cluster shapes → correct colours
+  const { svg } = await mermaid.render(id, injectHtmlLabelsFalse(dsl))
+  return svgToPngDataUrl(inlineSvgStyles(svg))
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -58,7 +127,7 @@ async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
   addTitleBar(slide, dag.name + ' — Application Landscape')
 
   const dsl = generateLandscapeDsl(dag, { useElk: false })
-  const png = await renderMermaidToSvgDataUrl(dsl)
+  const png = await renderMermaidToPng(dsl)
 
   // Image fills the area below the title bar
   const imgY = 0.6
@@ -71,7 +140,7 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flowName: string, flowBod
   addTitleBar(slide, flowName)
 
   const fullDsl = buildSequenceDsl(flowBody, dag)
-  const png = await renderMermaidToSvgDataUrl(fullDsl)
+  const png = await renderMermaidToPng(fullDsl)
 
   const contentY = 0.65
   const contentH = SLIDE_H - contentY - 0.1

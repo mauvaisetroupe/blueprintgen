@@ -5,9 +5,11 @@ import { useDagStore } from '@/stores/dag'
 import { generateLandscapeDsl, toNodeId } from '@/utils/landscapeDslGenerator'
 import { collectAllFlowRelations } from '@/utils/sequenceDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
+import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
 import Button from 'primevue/button'
+import Menu from 'primevue/menu'
 import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Splitter from 'primevue/splitter'
@@ -183,6 +185,48 @@ const validationStatus = computed(() => {
   if (hasWarnings.value)           return 'warnings'
   return 'valid'
 })
+
+// ─── Export ──────────────────────────────────────────────────────────────────
+
+const exportMenu = ref<InstanceType<typeof Menu>>()
+const exportMenuItems = ref([
+  {
+    label: 'SVG',
+    items: [
+      {
+        label: 'SVG — raw (browser rendering)',
+        icon: 'pi pi-image',
+        command: () => exportSvg(false),
+      },
+      {
+        label: 'SVG — pptx-ready (text labels + inlined styles)',
+        icon: 'pi pi-file-export',
+        command: () => exportSvg(true),
+      },
+    ],
+  },
+  {
+    label: 'Coming soon',
+    items: [
+      { label: 'draw.io (.drawio)', icon: 'pi pi-share-alt', disabled: true },
+    ],
+  },
+])
+
+async function exportSvg(pptxMode: boolean) {
+  if (!dag.value) return
+  const dsl = pptxMode ? injectHtmlLabelsFalse(activeDsl.value) : activeDsl.value
+  const id  = `export-${Date.now()}`
+  const { svg } = await mermaid.render(id, dsl)
+  const processed = pptxMode ? inlineSvgStyles(svg) : svg
+  const blob = new Blob([processed], { type: 'image/svg+xml' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}${pptxMode ? '-pptx' : ''}.svg`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
@@ -219,6 +263,17 @@ const validationStatus = computed(() => {
           {{ cat.name }}
         </label>
       </div>
+
+      <!-- Export -->
+      <div class="toolbar-spacer" />
+      <Button
+        label="Export"
+        icon="pi pi-download"
+        size="small"
+        severity="secondary"
+        @click="exportMenu?.toggle($event)"
+      />
+      <Menu ref="exportMenu" :model="exportMenuItems" popup />
 
       <!-- Manual mode actions in toolbar -->
       <template v-if="editMode === 'manual'" class="manual-actions">
@@ -354,6 +409,8 @@ const validationStatus = computed(() => {
 
 /* Validation status in toolbar */
 .validation-status { margin-left: auto; }
+
+.toolbar-spacer { flex: 1; }
 
 .status { display: flex; align-items: center; gap: 0.35rem; font-size: 0.875rem; }
 .status.validating { color: var(--p-text-muted-color); }
