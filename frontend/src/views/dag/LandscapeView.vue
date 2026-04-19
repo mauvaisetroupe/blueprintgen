@@ -6,6 +6,7 @@ import { generateLandscapeDsl, toNodeId } from '@/utils/landscapeDslGenerator'
 import { collectAllFlowRelations } from '@/utils/sequenceDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
+import { exportToDrawio } from '@/utils/drawioExporter'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
 import Button from 'primevue/button'
@@ -220,9 +221,9 @@ const exportMenuItems = ref([
     ],
   },
   {
-    label: 'Coming soon',
+    label: 'draw.io',
     items: [
-      { label: 'draw.io (.drawio)', icon: 'pi pi-share-alt', disabled: true },
+      { label: 'draw.io (.drawio)', icon: 'pi pi-share-alt', command: () => dag.value && exportToDrawio(dag.value) },
     ],
   },
 ])
