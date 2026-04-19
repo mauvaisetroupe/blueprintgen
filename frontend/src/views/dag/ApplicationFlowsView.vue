@@ -13,6 +13,7 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
+import { exportFlowToDrawio } from '@/utils/drawioExporter'
 
 const route = useRoute()
 const store = useDagStore()
@@ -196,18 +197,62 @@ function updateDescription(e: Event) {
   if (selectedFlow.value && dag.value) store.updateFlow(dag.value.id, selectedFlow.value.id, { description: value })
 }
 
-// ─── Export SVG ──────────────────────────────────────────────────────────────
+// ─── Export ──────────────────────────────────────────────────────────────────
 
 const exportMenu = ref<InstanceType<typeof Menu>>()
-const exportMenuItems = computed(() => [
-  {
-    label: 'SVG',
-    items: [
-      { label: 'SVG — raw', icon: 'pi pi-image', command: () => exportSvg(false) },
-      { label: 'SVG — pptx-ready (inlined styles)', icon: 'pi pi-file-export', command: () => exportSvg(true) },
-    ],
-  },
-])
+const exportMenuItems = computed(() => {
+  const items: object[] = [
+    {
+      label: 'SVG',
+      items: [
+        { label: 'SVG — raw', icon: 'pi pi-image', command: () => exportSvg(false) },
+        { label: 'SVG — pptx-ready (inlined styles)', icon: 'pi pi-file-export', command: () => exportSvg(true) },
+      ],
+    },
+    {
+      label: 'Mermaid',
+      items: [
+        { label: 'Export DSL (.mmd)', icon: 'pi pi-code', command: () => exportMermaid() },
+        {
+          label: 'draw.io tip: Extras › Edit Diagram › paste',
+          icon: 'pi pi-info-circle',
+          disabled: true,
+        },
+      ],
+    },
+  ]
+
+  if (diagramMode.value === 'activity') {
+    items.push({
+      label: 'draw.io',
+      items: [
+        {
+          label: 'draw.io (.drawio)',
+          icon: 'pi pi-share-alt',
+          command: () => {
+            if (!dag.value || !selectedFlow.value) return
+            exportFlowToDrawio(
+              dag.value,
+              selectedFlow.value,
+              activitySubgraphs.value,
+              showReturnArrows.value,
+            )
+          },
+        },
+      ],
+    })
+  }
+
+  return items
+})
+
+function flowBaseName(): string {
+  if (!dag.value || !selectedFlow.value) return 'export'
+  const dagName  = dag.value.name.replace(/[^\w\s-]/g, '').trim()
+  const flowName = selectedFlow.value.name.replace(/[^\w\s-]/g, '').trim()
+  const mode     = diagramMode.value === 'activity' ? '-activity' : '-sequence'
+  return `${dagName}-${flowName}${mode}`
+}
 
 async function exportSvg(pptxMode: boolean) {
   if (!dag.value || !selectedFlow.value || !renderedDsl.value.trim()) return
@@ -219,9 +264,18 @@ async function exportSvg(pptxMode: boolean) {
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  const flowName = selectedFlow.value.name.replace(/[^\w\s-]/g, '').trim()
-  const modeSuffix = diagramMode.value === 'activity' ? '-activity' : '-sequence'
-  a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}-${flowName}${modeSuffix}${pptxMode ? '-pptx' : ''}.svg`
+  a.download = `${flowBaseName()}${pptxMode ? '-pptx' : ''}.svg`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportMermaid() {
+  if (!renderedDsl.value.trim()) return
+  const blob = new Blob([renderedDsl.value], { type: 'text/plain' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `${flowBaseName()}.mmd`
   a.click()
   URL.revokeObjectURL(url)
 }

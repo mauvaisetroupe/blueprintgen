@@ -18,13 +18,13 @@
  */
 
 import mermaid from 'mermaid'
-import type { Dag } from '@/types/dag'
+import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl, toNodeId } from './landscapeDslGenerator'
 import { injectHtmlLabelsFalse } from './svgInliner'
-import { collectAllFlowRelations } from './sequenceDslGenerator'
+import { collectAllFlowRelations, buildActivityDsl } from './sequenceDslGenerator'
 
-// Hauteur du titre dans un swimlane draw.io (startSize par défaut)
-const SWIMLANE_TITLE_H = 30
+const CIRCLED_DIGITS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+                        '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
 
 interface Bounds { x: number; y: number; w: number; h: number }
 
@@ -359,7 +359,17 @@ function resolveDslForDrawio(dag: Dag): string {
   return generateLandscapeDsl(dag, { useElk: false })
 }
 
-// ─── Point d'entrée public ────────────────────────────────────────────────────
+// ─── Points d'entrée publics ──────────────────────────────────────────────────
+
+function downloadDrawio(xml: string, baseName: string): void {
+  const blob = new Blob([xml], { type: 'application/xml' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `${baseName.replace(/[^\w\s-]/g, '').trim()}.drawio`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export async function exportToDrawio(dag: Dag): Promise<void> {
   const dsl = resolveDslForDrawio(dag)
@@ -373,12 +383,139 @@ export async function exportToDrawio(dag: Dag): Promise<void> {
   const nodeBounds    = parseNodeBounds(svgEl)
   const clusterBounds = parseClusterBounds(svgEl)
 
-  const xml  = buildDrawioXml(dag, nodeBounds, clusterBounds)
-  const blob = new Blob([xml], { type: 'application/xml' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `${dag.name.replace(/[^\w\s-]/g, '').trim()}.drawio`
-  a.click()
-  URL.revokeObjectURL(url)
+  const xml = buildDrawioXml(dag, nodeBounds, clusterBounds)
+  downloadDrawio(xml, dag.name)
+}
+
+// ─── Export draw.io pour les flux activity ────────────────────────────────────
+
+/**
+ * Génère le XML draw.io pour un flux activity (flowchart).
+ * Réutilise la même mécanique que buildDrawioXml mais avec :
+ *   - les catégories actives dans le flux (subgraphCategoryIds)
+ *   - les steps du flux comme source des arêtes (numérotées)
+ */
+function buildActivityFlowDrawioXml(
+  dag: Dag,
+  flow: ApplicationFlow,
+  nodeBounds: Map<string, Bounds>,
+  clusterBounds: Map<string, ClusterBounds>,
+  subgraphCategoryIds: Set<string>,
+): string {
+  const cells: string[] = []
+  cells.push('<mxCell id="0" />')
+  cells.push('<mxCell id="1" parent="0" />')
+
+  const catCluster = new Map<string, ClusterBounds>()
+  for (const cat of dag.categories) {
+    const cb = clusterBounds.get(cat.name)
+    if (cb) catCluster.set(cat.id, cb)
+  }
+
+  // Containers pour les catégories actives dans ce flux
+  const sortedCats = [...dag.categories].sort((a, b) => a.order - b.order)
+  for (const cat of sortedCats) {
+    if (!cat.showSubgraph || !subgraphCategoryIds.has(cat.id)) continue
+    const cb = catCluster.get(cat.id)
+    if (!cb) continue
+    const hasNodes = dag.components.some(
+      (c) => c.categoryId === cat.id && nodeBounds.has(toNodeId(c.name)),
+    )
+    if (!hasNodes) continue
+
+    cells.push(
+      `<mxCell id="cat_${cat.id}" value="${xmlEsc(cat.name)}" ` +
+      `style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;` +
+      `container=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;" ` +
+      `vertex="1" parent="1">` +
+      `<mxGeometry x="${px(cb.x)}" y="${px(cb.y)}" width="${px(cb.w)}" height="${px(cb.h)}" as="geometry" />` +
+      `</mxCell>`,
+    )
+  }
+
+  // Composants (vertices) — uniquement ceux présents dans le SVG
+  for (const comp of dag.components) {
+    const nb = nodeBounds.get(toNodeId(comp.name))
+    if (!nb) continue
+
+    const cat = dag.categories.find((c) => c.id === comp.categoryId)
+    const inSubgraph = cat?.showSubgraph && subgraphCategoryIds.has(comp.categoryId)
+    const cb = inSubgraph ? catCluster.get(comp.categoryId) : undefined
+
+    let parentId = '1'
+    let gx = nb.x, gy = nb.y
+    if (cb) {
+      parentId = `cat_${comp.categoryId}`
+      gx = nb.x - cb.x
+      gy = nb.y - cb.y
+    }
+
+    cells.push(
+      `<mxCell id="comp_${comp.id}" value="${xmlEsc(comp.name)}" ` +
+      `style="rounded=1;whiteSpace=wrap;html=1;" ` +
+      `vertex="1" parent="${parentId}">` +
+      `<mxGeometry x="${px(gx)}" y="${px(gy)}" width="${px(nb.w)}" height="${px(nb.h)}" as="geometry" />` +
+      `</mxCell>`,
+    )
+  }
+
+  // Arêtes numérotées depuis les steps forward du flux
+  const forwardSteps = flow.steps.filter((s) => !s.isReturn)
+  const relations    = forwardSteps.map((s) => ({
+    fromComponentId: s.fromComponentId,
+    toComponentId:   s.toComponentId,
+  }))
+  const connectionPoints = computeConnectionPoints(relations, nodeBounds, dag)
+
+  forwardSteps.forEach((step, idx) => {
+    const circle  = CIRCLED_DIGITS[idx] ?? `${idx + 1}.`
+    const label   = `${circle} ${step.label ?? ''}`
+    const cp      = connectionPoints.get(`${step.fromComponentId}->${step.toComponentId}`)
+    const cpStyle = cp
+      ? `exitX=${r2(cp.exitX)};exitY=${cp.exitY};exitDx=0;exitDy=0;` +
+        `entryX=${r2(cp.entryX)};entryY=${cp.entryY};entryDx=0;entryDy=0;`
+      : ''
+
+    cells.push(
+      `<mxCell id="step_${step.id || idx}" value="${xmlEsc(label)}" ` +
+      `style="edgeStyle=elbowEdgeStyle;elbow=vertical;jumpStyle=arc;${cpStyle}rounded=0;" ` +
+      `edge="1" source="comp_${step.fromComponentId}" target="comp_${step.toComponentId}" parent="1">` +
+      `<mxGeometry relative="1" as="geometry" />` +
+      `</mxCell>`,
+    )
+  })
+
+  const body = cells.map((c) => `    ${c}`).join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<mxGraphModel>\n  <root>\n${body}\n  </root>\n</mxGraphModel>`
+}
+
+/**
+ * Exporte un flux activity vers draw.io.
+ * Rend le DSL en Dagre (coordonnées stables) puis génère le XML mxGraphModel.
+ */
+export async function exportFlowToDrawio(
+  dag: Dag,
+  flow: ApplicationFlow,
+  subgraphCategoryIds: Set<string>,
+  showReturns: boolean,
+): Promise<void> {
+  const dsl = buildActivityDsl(
+    flow.mermaidDsl ?? '',
+    dag,
+    false,               // Dagre — pas ELK, pour stabilité des coords
+    subgraphCategoryIds,
+    showReturns,
+  )
+  const id = `drawio-flow-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const { svg: svgString } = await mermaid.render(id, injectHtmlLabelsFalse(dsl))
+
+  const div = document.createElement('div')
+  div.innerHTML = svgString
+  const svgEl = div.querySelector('svg')!
+
+  const nodeBounds    = parseNodeBounds(svgEl)
+  const clusterBounds = parseClusterBounds(svgEl)
+
+  const xml = buildActivityFlowDrawioXml(dag, flow, nodeBounds, clusterBounds, subgraphCategoryIds)
+  downloadDrawio(xml, `${dag.name}-${flow.name}`)
 }
