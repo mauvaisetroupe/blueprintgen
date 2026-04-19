@@ -48,6 +48,35 @@ export const useDagStore = defineStore(
       dags.value = dags.value.filter((d) => d.id !== id)
     }
 
+    /**
+     * Ouvre un DAG depuis un objet JSON sauvegardé (format natif du store).
+     * Un nouvel ID est généré pour éviter les conflits si on ouvre le même fichier deux fois.
+     * Les champs corrompus ou manquants sont sanitizés.
+     */
+    function openDag(data: Dag): Dag {
+      const dag: Dag = {
+        ...data,
+        id:        generateId(),
+        createdAt: now(),
+        updatedAt: now(),
+        landscape: {
+          ...data.landscape,
+          mermaidDsl: (data.landscape?.mermaidDsl === '__vue_devtool_undefined__')
+            ? undefined
+            : data.landscape?.mermaidDsl,
+        },
+        // Champs ajoutés dans les versions récentes — migration défensive
+        relations:          data.relations          ?? [],
+        flowsView:          data.flowsView          ?? {},
+        applicationFlows:   data.applicationFlows   ?? [],
+        categories:         data.categories         ?? [],
+        components:         data.components         ?? [],
+        technicalLandscape: data.technicalLandscape ?? { components: [] },
+      }
+      dags.value.push(dag)
+      return dag
+    }
+
     function getDag(id: string): Dag | undefined {
       const dag = dags.value.find((d) => d.id === id)
       // Migrate DAGs created before new fields were added
@@ -281,7 +310,9 @@ export const useDagStore = defineStore(
     function saveLandscapeDsl(dagId: string, dsl: string | undefined) {
       const dag = getDag(dagId)
       if (!dag) return
-      dag.landscape.mermaidDsl = dsl || undefined
+      // Sanitize Vue devtools sentinel that gets written when the value is undefined
+      const clean = (!dsl || dsl === '__vue_devtool_undefined__') ? undefined : dsl
+      dag.landscape.mermaidDsl = clean
       dag.updatedAt = now()
     }
 
@@ -311,6 +342,7 @@ export const useDagStore = defineStore(
       createDag,
       updateDag,
       deleteDag,
+      openDag,
       getDag,
       addCategory,
       updateCategory,

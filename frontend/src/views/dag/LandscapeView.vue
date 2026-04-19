@@ -61,7 +61,8 @@ const modeOptions = [
 // Initialized from store on mount so navigation away/back preserves the content
 function loadStoredBody(): string {
   const stored = dag.value?.landscape.mermaidDsl
-  if (!stored) return ''
+  // Sanitize Vue devtools sentinel that can appear when undefined is stored
+  if (!stored || stored === '__vue_devtool_undefined__') return ''
   // Strip header whether stored as full DSL (starts with --- or flowchart/graph)
   if (stored.startsWith('---') || /^(?:flowchart|graph)\s/m.test(stored)) {
     return extractBody(stored)
@@ -96,7 +97,8 @@ const activeDsl = computed(() => {
 
 function switchToManual() {
   const stored = dag.value?.landscape.mermaidDsl
-  manualDsl.value = stored
+  const hasValidStored = !!stored && stored !== '__vue_devtool_undefined__'
+  manualDsl.value = hasValidStored
     ? loadStoredBody()
     : extractBody(activeDsl.value)   // initialise depuis le DSL actif (guided ou autosync)
   editMode.value = 'manual'

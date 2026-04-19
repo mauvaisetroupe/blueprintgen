@@ -31,20 +31,43 @@ async function handleExport() {
     exporting.value = false
   }
 }
+
+function saveLocally() {
+  if (!dag.value) return
+  const json = JSON.stringify(dag.value, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
   <div v-if="dag" class="detail-layout">
     <div class="detail-header">
       <h2>{{ dag.name }}</h2>
-      <Button
-        label="Export PPTX"
-        icon="pi pi-file-export"
-        size="small"
-        severity="secondary"
-        :loading="exporting"
-        @click="handleExport"
-      />
+      <div class="header-actions">
+        <Button
+          icon="pi pi-save"
+          size="small"
+          severity="secondary"
+          text
+          title="Save locally"
+          label="Save locally"
+          @click="saveLocally"
+        />
+        <Button
+          label="Export PPTX"
+          icon="pi pi-file-export"
+          size="small"
+          severity="secondary"
+          :loading="exporting"
+          @click="handleExport"
+        />
+      </div>
     </div>
 
     <Tabs value="0" class="detail-tabs">
@@ -88,6 +111,12 @@ async function handleExport() {
 
 .detail-header h2 {
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .detail-tabs {
