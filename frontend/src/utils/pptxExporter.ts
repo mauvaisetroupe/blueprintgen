@@ -39,32 +39,46 @@ const PNG_SCALE = 2
 // making img.naturalWidth unreliable (returns a small default like 0 or 100).
 // This causes the canvas to be too small and only the top-left corner is drawn.
 // Fix: read the viewBox and stamp explicit pixel width/height onto the SVG element.
-function normalizeSvgDimensions(svgString: string): string {
+interface PngResult {
+  dataUrl:  string
+  naturalW: number   // px — dimensions réelles du SVG source
+  naturalH: number
+}
+
+// Lit le viewBox pour obtenir les dimensions exactes du SVG et pose width/height en px.
+// img.naturalWidth est peu fiable sur les SVG avec max-width CSS ou width en %.
+function normalizeSvgDimensions(svgString: string): { svg: string; w: number; h: number } {
   const div = document.createElement('div')
   div.innerHTML = svgString
-  const svg = div.querySelector('svg')
-  if (!svg) return svgString
+  const el = div.querySelector('svg')
+  if (!el) return { svg: svgString, w: 1200, h: 700 }
 
-  const vb = svg.getAttribute('viewBox')
+  let w = 0, h = 0
+  const vb = el.getAttribute('viewBox')
   if (vb) {
     const parts = vb.trim().split(/[\s,]+/).map(Number)
     if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
-      svg.setAttribute('width',  String(parts[2]))
-      svg.setAttribute('height', String(parts[3]))
-      svg.style.maxWidth = ''   // remove any interfering CSS max-width
+      w = parts[2]; h = parts[3]
     }
   }
-  return svg.outerHTML
+  if (!w || !h) {
+    w = parseFloat(el.getAttribute('width')  ?? '0') || 1200
+    h = parseFloat(el.getAttribute('height') ?? '0') || 700
+  }
+  el.setAttribute('width',  String(w))
+  el.setAttribute('height', String(h))
+  el.style.maxWidth = ''
+  return { svg: el.outerHTML, w, h }
 }
 
-function svgToPngDataUrl(svgString: string): Promise<string> {
-  const normalized = normalizeSvgDimensions(svgString)
+function svgToPng(svgString: string): Promise<PngResult> {
+  const { svg: normalized, w: naturalW, h: naturalH } = normalizeSvgDimensions(svgString)
   return new Promise((resolve, reject) => {
     const b64 = btoa(unescape(encodeURIComponent(normalized)))
     const img = new Image()
     img.onload = () => {
-      const w = img.naturalWidth  || 1200
-      const h = img.naturalHeight || 700
+      const w = img.naturalWidth  || naturalW
+      const h = img.naturalHeight || naturalH
       const canvas = document.createElement('canvas')
       canvas.width  = w * PNG_SCALE
       canvas.height = h * PNG_SCALE
@@ -74,7 +88,7 @@ function svgToPngDataUrl(svgString: string): Promise<string> {
       ctx.fillRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0)
       try {
-        resolve(canvas.toDataURL('image/png'))
+        resolve({ dataUrl: canvas.toDataURL('image/png'), naturalW: w, naturalH: h })
       } catch (e) {
         reject(new Error(`Canvas tainted — SVG may contain cross-origin resources: ${e}`))
       }
@@ -84,12 +98,28 @@ function svgToPngDataUrl(svgString: string): Promise<string> {
   })
 }
 
-async function renderMermaidToPng(dsl: string): Promise<string> {
+async function renderMermaidToPng(dsl: string): Promise<PngResult> {
   const id = `pptx-mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  // injectHtmlLabelsFalse: avoids <foreignObject> → canvas stays untainted
-  // inlineSvgStyles: resolves CSS var() on cluster shapes → correct colours
   const { svg } = await mermaid.render(id, injectHtmlLabelsFalse(dsl))
-  return svgToPngDataUrl(inlineSvgStyles(svg))
+  return svgToPng(inlineSvgStyles(svg))
+}
+
+// Calcule les coordonnées exactes (en pouces) pour placer une image de naturalW×naturalH px
+// dans le rectangle disponible (anchorX, anchorY, availW, availH), centrée, ratio préservé.
+function containRect(
+  naturalW: number, naturalH: number,
+  anchorX: number, anchorY: number,
+  availW: number,  availH: number,
+): { x: number; y: number; w: number; h: number } {
+  const scale = Math.min(availW / naturalW, availH / naturalH)
+  const w = naturalW * scale
+  const h = naturalH * scale
+  return {
+    x: anchorX + (availW - w) / 2,
+    y: anchorY + (availH - h) / 2,
+    w,
+    h,
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,12 +178,12 @@ async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
   addTitleBar(slide, dag.name + ' — Application Landscape')
 
   const dsl = resolveLandscapeDsl(dag)
-  const png = await renderMermaidToPng(dsl)
+  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(dsl)
 
-  // Image fills the area below the title bar
-  const imgY = 0.6
-  const imgH = SLIDE_H - imgY - 0.1
-  slide.addImage({ data: png, x: 0.2, y: imgY, w: SLIDE_W - 0.4, h: imgH, sizing: { type: 'contain', w: SLIDE_W - 0.4, h: imgH } })
+  const anchorX = 0.2,  anchorY = 0.6
+  const availW  = SLIDE_W - 0.4, availH = SLIDE_H - anchorY - 0.1
+  const pos = containRect(naturalW, naturalH, anchorX, anchorY, availW, availH)
+  slide.addImage({ data: dataUrl, ...pos })
 }
 
 async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flowName: string, flowBody: string) {
@@ -161,7 +191,7 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flowName: string, flowBod
   addTitleBar(slide, flowName)
 
   const fullDsl = buildSequenceDsl(flowBody, dag)
-  const png = await renderMermaidToPng(fullDsl)
+  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(fullDsl)
 
   const contentY = 0.65
   const contentH = SLIDE_H - contentY - 0.1
@@ -169,12 +199,9 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flowName: string, flowBod
   const bulletsX = imgW + 0.4
   const bulletsW = SLIDE_W - bulletsX - 0.2
 
-  // Sequence diagram — left panel
-  slide.addImage({
-    data: png,
-    x: 0.15, y: contentY, w: imgW, h: contentH,
-    sizing: { type: 'contain', w: imgW, h: contentH },
-  })
+  // Sequence diagram — left panel, ratio préservé
+  const pos = containRect(naturalW, naturalH, 0.15, contentY, imgW, contentH)
+  slide.addImage({ data: dataUrl, ...pos })
 
   // Numbered steps — right panel
   const steps = extractFlowSteps(flowBody)
