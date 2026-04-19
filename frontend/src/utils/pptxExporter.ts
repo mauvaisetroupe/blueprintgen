@@ -4,6 +4,7 @@ import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
 import { buildSequenceDsl, buildActivityDsl, collectAllFlowRelations } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
+import { extractSequenceStepPositions, extractActivityStepPositions, addNumberOverlays } from './pptxSequenceOverlay'
 
 // Widescreen 13.33" × 7.5"
 const SLIDE_W = 13.33
@@ -45,6 +46,7 @@ interface PngResult {
   dataUrl:  string
   naturalW: number   // px — dimensions réelles du SVG source
   naturalH: number
+  svgString: string  // SVG inliné avant rasterisation (pour extraction des positions overlay)
 }
 
 // Lit le viewBox pour obtenir les dimensions exactes du SVG et pose width/height en px.
@@ -90,7 +92,7 @@ function svgToPng(svgString: string): Promise<PngResult> {
       ctx.fillRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0)
       try {
-        resolve({ dataUrl: canvas.toDataURL('image/png'), naturalW: w, naturalH: h })
+        resolve({ dataUrl: canvas.toDataURL('image/png'), naturalW: w, naturalH: h, svgString })
       } catch (e) {
         reject(new Error(`Canvas tainted — SVG may contain cross-origin resources: ${e}`))
       }
@@ -274,9 +276,18 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
         fv.showReturns     ?? false,
       )
     : buildSequenceDsl(numberForwardArrows(flowBody), dag)
-  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(fullDsl)
+  const { dataUrl, naturalW, naturalH, svgString } = await renderMermaidToPng(fullDsl)
   const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })
+
+  // Overlay des numéros cerclés (sequence ou activity)
+  if (flow.steps.length > 0) {
+    const forwardSteps = flow.steps.filter((s) => !s.isReturn)
+    const positions = isActivity
+      ? extractActivityStepPositions(svgString, forwardSteps.length)
+      : extractSequenceStepPositions(svgString, flow.steps)
+    addNumberOverlays(slide, positions, naturalW, naturalH, pos)
+  }
 
   // ── Description + numbered steps — right panel ───────────────────────────
   const rows: PptxGenJS.TextProps[] = []
