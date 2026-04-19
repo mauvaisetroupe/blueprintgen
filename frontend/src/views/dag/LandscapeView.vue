@@ -221,6 +221,18 @@ const exportMenuItems = ref([
     ],
   },
   {
+    label: 'Mermaid',
+    items: [
+      { label: 'Export DSL (.mmd)', icon: 'pi pi-code', command: () => exportMermaid() },
+      { label: 'Copy to clipboard', icon: 'pi pi-copy', command: () => copyMermaid() },
+      {
+        label: 'draw.io tip: Extras › Edit Diagram › paste',
+        icon: 'pi pi-info-circle',
+        disabled: true,
+      },
+    ],
+  },
+  {
     label: 'draw.io',
     items: [
       { label: 'draw.io (.drawio)', icon: 'pi pi-share-alt', command: () => dag.value && exportToDrawio(dag.value) },
@@ -241,6 +253,22 @@ async function exportSvg(pptxMode: boolean) {
   a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}${pptxMode ? '-pptx' : ''}.svg`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function exportMermaid() {
+  if (!dag.value || !activeDsl.value.trim()) return
+  const blob = new Blob([activeDsl.value], { type: 'text/plain' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}-landscape.mmd`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function copyMermaid() {
+  if (!activeDsl.value.trim()) return
+  await navigator.clipboard.writeText(activeDsl.value)
 }
 </script>
 
