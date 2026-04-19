@@ -59,11 +59,14 @@ export interface ApplicationFlow {
 
 // --- Relations ---
 
+// source: 'manual' = explicitement ajouté par l'architecte (peut ne pas être couvert par une séquence)
+// undefined = legacy / avant l'introduction du champ
 export interface Relation {
   id: string
   fromComponentId: string
   toComponentId: string
   label?: string
+  source?: 'manual'
 }
 
 // --- DAG root ---

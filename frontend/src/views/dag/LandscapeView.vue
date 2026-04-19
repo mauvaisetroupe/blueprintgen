@@ -69,11 +69,19 @@ const manualDsl = ref(loadStoredBody())
 // Full DSL passed to MermaidDiagram and validation in manual mode
 const fullManualDsl = computed(() => landscapeHeader.value + '\n' + manualDsl.value)
 
-// Auto-sync DSL: components + relations derived from all sequence flows
+// Auto-sync DSL: relations des séquences + relations manuelles (source:'manual') de dag.relations
+// → l'architecte peut ajouter des flèches manuellement sans perdre la vue autosync
 const autoSyncDsl = computed(() => {
   if (!dag.value) return ''
   const flowRelations = collectAllFlowRelations(dag.value)
-  return generateLandscapeDsl(dag.value, { useElk: useElk.value }, flowRelations)
+  // Dédoublonnage : les relations manuelles déjà présentes dans les séquences ne sont pas ajoutées deux fois
+  const flowKey  = (r: { fromComponentId: string; toComponentId: string }) =>
+    `${r.fromComponentId}→${r.toComponentId}`
+  const flowKeys = new Set(flowRelations.map(flowKey))
+  const manualOnly = dag.value.relations.filter(
+    (r) => r.source === 'manual' && !flowKeys.has(flowKey(r)),
+  )
+  return generateLandscapeDsl(dag.value, { useElk: useElk.value }, [...flowRelations, ...manualOnly])
 })
 
 const activeDsl = computed(() => {
@@ -86,9 +94,12 @@ function switchToManual() {
   const stored = dag.value?.landscape.mermaidDsl
   manualDsl.value = stored
     ? loadStoredBody()
-    : extractBody(generatedDsl.value)
+    : extractBody(activeDsl.value)   // initialise depuis le DSL actif (guided ou autosync)
   editMode.value = 'manual'
-  if (dag.value) store.setLandscapeMode(dag.value.id, 'manual')
+  if (dag.value) {
+    store.setLandscapeMode(dag.value.id, 'manual')
+    store.saveLandscapeDsl(dag.value.id, manualDsl.value)  // persiste immédiatement (évite mermaidDsl=undefined)
+  }
   runValidation(fullManualDsl.value)
 }
 

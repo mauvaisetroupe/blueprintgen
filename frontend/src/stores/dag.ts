@@ -135,6 +135,7 @@ export const useDagStore = defineStore(
         fromComponentId,
         toComponentId,
         label,
+        source: 'manual',
       }
       dag.relations.push(relation)
       dag.updatedAt = now()
@@ -223,6 +224,7 @@ export const useDagStore = defineStore(
             fromComponentId: fromComp.id,
             toComponentId: toComp.id,
             label: parsedRel.label,
+            source: 'manual',
           })
           console.log('[syncFromDsl] PUSHED relation', fromComp.name, '->', toComp.name)
         }
