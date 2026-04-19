@@ -2,10 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, buildSequenceDsl, toParticipantId, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, toParticipantId, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
+import SelectButton from 'primevue/selectbutton'
+import ToggleSwitch from 'primevue/toggleswitch'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
@@ -28,10 +30,49 @@ const editorDsl = ref('')
 const syntaxError = ref<string | null>(null)
 const isValidating = ref(false)
 
-// Full DSL sent to Mermaid (auto-injected participants + body)
-const renderedDsl = computed(() =>
-  dag.value ? buildSequenceDsl(editorDsl.value, dag.value) : '',
-)
+// Mode de visualisation du diagramme (affecte tous les flows)
+type DiagramMode = 'sequence' | 'activity'
+const diagramMode = ref<DiagramMode>('sequence')
+const diagramModeOptions = [
+  { label: 'Sequence', value: 'sequence' },
+  { label: 'Activity', value: 'activity' },
+]
+const useElkActivity    = ref(true)
+const showReturnArrows  = ref(false)
+
+// Catégories affichées en subgraph dans le mode activity
+// Initialisées avec toutes les catégories activées
+const activitySubgraphs = ref<Set<string>>(new Set(dag.value?.categories.map((c) => c.id) ?? []))
+
+function toggleActivitySubgraph(categoryId: string, checked: boolean) {
+  const next = new Set(activitySubgraphs.value)
+  checked ? next.add(categoryId) : next.delete(categoryId)
+  activitySubgraphs.value = next
+}
+
+// Catégories qui ont au moins un participant dans le flow courant
+const activeCategoryIds = computed(() => {
+  if (!dag.value || !editorDsl.value.trim()) return new Set<string>()
+  const ANY_ARROW = /^([a-zA-Z_]\w*)\s*(?:->>|-->>|-x|->|-->)\S*\s*([a-zA-Z_]\w*)/
+  const ids = new Set<string>()
+  for (const raw of editorDsl.value.split('\n')) {
+    const m = raw.trim().match(ANY_ARROW)
+    if (!m) continue
+    for (const pid of [m[1], m[2]]) {
+      const comp = dag.value!.components.find((c) => toParticipantId(c.name) === pid)
+      if (comp) ids.add(comp.categoryId)
+    }
+  }
+  return ids
+})
+
+// DSL envoyé à Mermaid selon le mode de visualisation
+const renderedDsl = computed(() => {
+  if (!dag.value || !editorDsl.value.trim()) return ''
+  if (diagramMode.value === 'activity')
+    return buildActivityDsl(editorDsl.value, dag.value, useElkActivity.value, activitySubgraphs.value, showReturnArrows.value)
+  return buildSequenceDsl(editorDsl.value, dag.value)
+})
 
 watch(selectedFlow, (flow) => {
   editorDsl.value = flow?.mermaidDsl ?? ''
@@ -233,6 +274,41 @@ function updateDescription(e: Event) {
         </SplitterPanel>
 
         <SplitterPanel :size="60" :min-size="30" class="diagram-panel">
+          <div class="diagram-toolbar">
+            <SelectButton
+              v-model="diagramMode"
+              :options="diagramModeOptions"
+              option-label="label"
+              option-value="value"
+              size="small"
+            />
+            <template v-if="diagramMode === 'activity'">
+              <div class="elk-toggle">
+                <ToggleSwitch v-model="useElkActivity" input-id="elk-activity-switch" />
+                <label for="elk-activity-switch">ELK</label>
+              </div>
+              <div class="elk-toggle">
+                <ToggleSwitch v-model="showReturnArrows" input-id="returns-switch" />
+                <label for="returns-switch">Returns</label>
+              </div>
+              <div class="subgraph-options">
+                <span class="subgraph-label">Subgraphs:</span>
+                <label
+                  v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+                  v-show="activeCategoryIds.has(cat.id)"
+                  :key="cat.id"
+                  class="toggle-label"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="activitySubgraphs.has(cat.id)"
+                    @change="toggleActivitySubgraph(cat.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                  {{ cat.name }}
+                </label>
+              </div>
+            </template>
+          </div>
           <MermaidDiagram :code="renderedDsl" />
         </SplitterPanel>
       </Splitter>
@@ -375,7 +451,50 @@ function updateDescription(e: Event) {
 
 .diagram-panel {
   overflow: auto;
-  padding: 1rem !important;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--p-content-border-color);
+  flex-shrink: 0;
+}
+
+.elk-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+}
+
+.subgraph-options {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+}
+
+.subgraph-label { font-weight: 600; }
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.diagram-panel :deep(.mermaid-wrapper) {
+  flex: 1;
+  padding: 1rem;
+  overflow: auto;
   display: flex;
   align-items: flex-start;
   justify-content: center;

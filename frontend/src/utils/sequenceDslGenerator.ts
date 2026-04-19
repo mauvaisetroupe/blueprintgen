@@ -100,6 +100,96 @@ export function generateFlowSkeleton(): string {
   return '%% Add sequence steps below\n'
 }
 
+// Unicode circled digits — shared with pptxExporter
+const CIRCLED_DIGITS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+                        '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
+
+// Converts a sequence diagram body to an activity-style flowchart DSL.
+// Only forward arrows (->>,->,- x) are kept and numbered with circled digits.
+// Return arrows (-->>) are ignored (they're implied).
+// Participant IDs are resolved to component display names for node labels.
+export function buildActivityDsl(
+  body: string,
+  dag: Dag,
+  useElk = true,
+  subgraphCategoryIds: Set<string> = new Set(),
+  showReturns = false,
+): string {
+  const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+  const RETURN  = /^([a-zA-Z_]\w*)\s*(-->>[\+\-]?|-->[\+\-]?|--x)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+
+  const componentMap = new Map(
+    dag.components
+      .filter((c) => c.name.trim() !== '')
+      .map((c) => [toNodeId(c.name), c.name]),
+  )
+
+  const participantIds = new Set<string>()
+  type Edge = { from: string; to: string; label: string; dashed: boolean; circle?: string }
+  const edges: Edge[] = []
+  let idx = 0
+
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+    const fwd = line.match(FORWARD)
+    if (fwd) {
+      participantIds.add(fwd[1])
+      participantIds.add(fwd[3])
+      edges.push({ from: fwd[1], to: fwd[3], label: fwd[4].trim(), dashed: false, circle: CIRCLED_DIGITS[idx++] ?? `${idx}.` })
+      continue
+    }
+    if (showReturns) {
+      const ret = line.match(RETURN)
+      if (ret) {
+        participantIds.add(ret[1])
+        participantIds.add(ret[3])
+        edges.push({ from: ret[1], to: ret[3], label: ret[4].trim(), dashed: true })
+      }
+    }
+  }
+
+  if (edges.length === 0) return ''
+
+  const lines = ['---', 'config:', '    theme: neutral']
+  if (useElk) lines.push('    layout: elk')
+  lines.push('---', '', 'flowchart TB')
+
+  // Grouper les participants par catégorie (subgraph) si demandé
+  const byCategory = new Map<string, string[]>()
+  const standalone: string[] = []
+
+  for (const id of participantIds) {
+    const comp = dag.components.find((c) => toNodeId(c.name) === id)
+    if (comp && subgraphCategoryIds.has(comp.categoryId)) {
+      if (!byCategory.has(comp.categoryId)) byCategory.set(comp.categoryId, [])
+      byCategory.get(comp.categoryId)!.push(id)
+    } else {
+      standalone.push(id)
+    }
+  }
+
+  // Subgraphs dans l'ordre des catégories
+  const sortedCats = [...dag.categories].sort((a, b) => a.order - b.order)
+  for (const cat of sortedCats) {
+    const ids = byCategory.get(cat.id)
+    if (!ids?.length) continue
+    lines.push(`  subgraph ${cat.name}`)
+    for (const id of ids) lines.push(`    ${id}["${componentMap.get(id) ?? id}"]`)
+    lines.push('  end')
+  }
+
+  // Participants sans subgraph
+  for (const id of standalone) lines.push(`  ${id}["${componentMap.get(id) ?? id}"]`)
+
+  lines.push('')
+  for (const e of edges) {
+    const arrow = e.dashed ? `-. "${e.label}" .->` : `-->|"${e.circle} ${e.label}"|`
+    lines.push(`  ${e.from} ${arrow} ${e.to}`)
+  }
+
+  return lines.join('\n')
+}
+
 // Builds the full Mermaid sequenceDiagram DSL from a body + the DAG model.
 // Participant declarations are auto-injected for any component ID referenced in the body.
 export function buildSequenceDsl(body: string, dag: Dag): string {

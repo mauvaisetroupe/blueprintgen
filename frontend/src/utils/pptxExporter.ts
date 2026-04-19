@@ -194,6 +194,23 @@ async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
 const CIRCLED_DIGITS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
                         '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
 
+// Préfixe chaque label de flèche forward (->>, -x, ->) avec le caractère cerclé correspondant.
+// Les flèches retour (->>) ne sont pas numérotées.
+// Utilisé uniquement pour le rendu PPTX — le DSL original n'est pas modifié.
+const FORWARD_ARROW_RE = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+
+function numberForwardArrows(dslBody: string): string {
+  let idx = 0
+  return dslBody.split('\n').map((line) => {
+    const m = line.trim().match(FORWARD_ARROW_RE)
+    if (!m) return line
+    const circle = CIRCLED_DIGITS[idx++] ?? `${idx}.`
+    // Préserve l'indentation d'origine
+    const indent = line.match(/^(\s*)/)?.[1] ?? ''
+    return `${indent}${m[1]} ${m[2]} ${m[3]}: ${circle} ${m[4]}`
+  }).join('\n')
+}
+
 function addSectionHeader(
   slide: PptxGenJS.Slide,
   label: string,
@@ -242,7 +259,8 @@ async function addFlowSlide(
   const contentH = SLIDE_H - contentY - 0.15
 
   // ── Sequence diagram — left panel ────────────────────────────────────────
-  const fullDsl = buildSequenceDsl(flowBody, dag)
+  // On numérote les flèches dans le DSL avant rendu — le DSL original n'est pas modifié
+  const fullDsl = buildSequenceDsl(numberForwardArrows(flowBody), dag)
   const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(fullDsl)
   const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })
