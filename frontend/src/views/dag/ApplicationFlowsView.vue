@@ -213,6 +213,7 @@ const exportMenuItems = computed(() => {
       label: 'Mermaid',
       items: [
         { label: 'Export DSL (.mmd)', icon: 'pi pi-code', command: () => exportMermaid() },
+        { label: 'Copy to clipboard', icon: 'pi pi-copy', command: () => copyMermaid() },
         {
           label: 'draw.io tip: Extras › Edit Diagram › paste',
           icon: 'pi pi-info-circle',
@@ -278,6 +279,11 @@ function exportMermaid() {
   a.download = `${flowBaseName()}.mmd`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+async function copyMermaid() {
+  if (!renderedDsl.value.trim()) return
+  await navigator.clipboard.writeText(renderedDsl.value)
 }
 </script>
 
