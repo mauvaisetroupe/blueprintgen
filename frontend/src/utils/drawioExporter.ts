@@ -118,6 +118,101 @@ function parseClusterBounds(svg: Element): Map<string, ClusterBounds> {
   return result
 }
 
+// ─── Connection points (portage de PLantumlToDrawioPositioner.java) ──────────
+
+interface ConnectionPoints {
+  exitX: number; exitY: number
+  entryX: number; entryY: number
+}
+
+/**
+ * Calcule les points d'accroche entry/exit (0.0–1.0) pour chaque relation.
+ * Algorithme porté depuis le Java PLantumlToDrawioPositioner :
+ *   - Pour chaque composant, on classe ses voisins en "au-dessus" / "en-dessous"
+ *     selon leur position Y dans le SVG, triés par X.
+ *   - La flèche sort par le bas du composant supérieur et entre par le haut
+ *     du composant inférieur (ou l'inverse).
+ *   - La position horizontale (X) est distribuée proportionnellement pour
+ *     éviter la superposition des flèches sur un même composant.
+ */
+function computeConnectionPoints(
+  relations: Array<{ fromComponentId: string; toComponentId: string }>,
+  nodeBounds: Map<string, Bounds>,
+  dag: Dag,
+): Map<string, ConnectionPoints> {
+
+  // compId → bounds SVG
+  const boundsOf = new Map<string, Bounds>()
+  for (const comp of dag.components) {
+    const nb = nodeBounds.get(toNodeId(comp.name))
+    if (nb) boundsOf.set(comp.id, nb)
+  }
+
+  const cx = (id: string) => { const b = boundsOf.get(id); return b ? b.x + b.w / 2 : 0 }
+  const cy = (id: string) => { const b = boundsOf.get(id); return b ? b.y + b.h / 2 : 0 }
+
+  // Voisins de chaque composant (toutes directions confondues, comme en Java)
+  const neighbours = new Map<string, Set<string>>()
+  for (const rel of relations) {
+    if (!neighbours.has(rel.fromComponentId)) neighbours.set(rel.fromComponentId, new Set())
+    if (!neighbours.has(rel.toComponentId))   neighbours.set(rel.toComponentId,   new Set())
+    neighbours.get(rel.fromComponentId)!.add(rel.toComponentId)
+    neighbours.get(rel.toComponentId)!.add(rel.fromComponentId)
+  }
+
+  // topConnected[A]    = voisins de A qui sont AU-DESSUS de A, triés par X
+  // bottomConnected[A] = voisins de A qui sont EN-DESSOUS ou au même niveau, triés par X
+  const topConnected    = new Map<string, string[]>()
+  const bottomConnected = new Map<string, string[]>()
+
+  for (const comp of dag.components) {
+    if (!boundsOf.has(comp.id)) continue
+    const myY = cy(comp.id)
+    const nbrs = [...(neighbours.get(comp.id) ?? [])].filter(id => boundsOf.has(id))
+
+    topConnected.set(comp.id,
+      nbrs.filter(id => cy(id) < myY).sort((a, b) => cx(a) - cx(b)),
+    )
+    bottomConnected.set(comp.id,
+      nbrs.filter(id => cy(id) >= myY).sort((a, b) => cx(a) - cx(b)),
+    )
+  }
+
+  const result = new Map<string, ConnectionPoints>()
+
+  for (const rel of relations) {
+    const { fromComponentId: fromId, toComponentId: toId } = rel
+    if (!boundsOf.has(fromId) || !boundsOf.has(toId)) continue
+
+    // La source est-elle au-dessus de la cible ?
+    const fromTopToBottom = (bottomConnected.get(fromId) ?? []).includes(toId)
+
+    const topId    = fromTopToBottom ? fromId : toId
+    const bottomId = fromTopToBottom ? toId   : fromId
+
+    // Connexion verticale : sortie par le bas du nœud supérieur, entrée par le haut du nœud inférieur
+    const exitY  = fromTopToBottom ? 1 : 0
+    const entryY = fromTopToBottom ? 0 : 1
+
+    // Distribution horizontale pour éviter la superposition
+    const bottomList = bottomConnected.get(topId)    ?? []
+    const topList    = topConnected.get(bottomId)    ?? []
+
+    const idxFromTop    = bottomList.indexOf(bottomId)
+    const idxFromBottom = topList.indexOf(topId)
+
+    const topRatio    = (idxFromTop    + 1) / (bottomList.length + 1)
+    const bottomRatio = (idxFromBottom + 1) / (topList.length    + 1)
+
+    const exitX  = fromTopToBottom ? topRatio    : bottomRatio
+    const entryX = fromTopToBottom ? bottomRatio : topRatio
+
+    result.set(`${fromId}->${toId}`, { exitX, exitY, entryX, entryY })
+  }
+
+  return result
+}
+
 // ─── Génération XML draw.io ───────────────────────────────────────────────────
 
 function xmlEsc(s: string): string {
@@ -128,9 +223,8 @@ function xmlEsc(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function px(n: number): string {
-  return Math.round(n).toString()
-}
+function px(n: number): string { return Math.round(n).toString() }
+function r2(n: number): string { return (Math.round(n * 100) / 100).toFixed(2) }
 
 function buildDrawioXml(
   dag: Dag,
@@ -212,6 +306,8 @@ function buildDrawioXml(
       }))
     : dag.relations
 
+  const connectionPoints = computeConnectionPoints(relations, nodeBounds, dag)
+
   for (const rel of relations) {
     const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)
     const toComp   = dag.components.find((c) => c.id === rel.toComponentId)
@@ -219,9 +315,15 @@ function buildDrawioXml(
     if (!nodeBounds.has(toNodeId(fromComp.name)) || !nodeBounds.has(toNodeId(toComp.name))) continue
 
     const label = rel.label?.trim() ?? ''
+    const cp    = connectionPoints.get(`${rel.fromComponentId}->${rel.toComponentId}`)
+    const cpStyle = cp
+      ? `exitX=${r2(cp.exitX)};exitY=${cp.exitY};exitDx=0;exitDy=0;` +
+        `entryX=${r2(cp.entryX)};entryY=${cp.entryY};entryDx=0;entryDy=0;`
+      : ''
+
     cells.push(
       `<mxCell id="rel_${rel.id}" value="${xmlEsc(label)}" ` +
-      `style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;" ` +
+      `style="edgeStyle=elbowEdgeStyle;elbow=vertical;jumpStyle=arc;${cpStyle}rounded=0;" ` +
       `edge="1" source="comp_${rel.fromComponentId}" target="comp_${rel.toComponentId}" parent="1">` +
       `<mxGeometry relative="1" as="geometry" />` +
       `</mxCell>`,
@@ -268,18 +370,8 @@ export async function exportToDrawio(dag: Dag): Promise<void> {
   div.innerHTML = svgString
   const svgEl = div.querySelector('svg')!
 
-  // Debug — à supprimer après validation
-  console.log('[drawio] SVG snippet:', svgString.slice(0, 800))
-  console.log('[drawio] g.node count:', svgEl.querySelectorAll('g.node').length)
-  console.log('[drawio] g[id^=flowchart] count:', svgEl.querySelectorAll('g[id^="flowchart-"]').length)
-  console.log('[drawio] g.cluster count:', svgEl.querySelectorAll('g.cluster').length)
-  console.log('[drawio] All g ids:', [...svgEl.querySelectorAll('g[id]')].map(g => g.id).slice(0, 20))
-
   const nodeBounds    = parseNodeBounds(svgEl)
   const clusterBounds = parseClusterBounds(svgEl)
-
-  console.log('[drawio] nodeBounds:', [...nodeBounds.entries()])
-  console.log('[drawio] clusterBounds:', [...clusterBounds.entries()])
 
   const xml  = buildDrawioXml(dag, nodeBounds, clusterBounds)
   const blob = new Blob([xml], { type: 'application/xml' })
