@@ -21,6 +21,7 @@ export type LandscapeMode = 'guided' | 'manual' | 'autosync'
 export interface Landscape {
   mermaidDsl?: string // manually edited DSL overrides generated one
   mode?: LandscapeMode
+  useElk?: boolean
 }
 
 // --- Technical landscape section ---

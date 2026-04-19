@@ -281,6 +281,13 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    function setLandscapeUseElk(dagId: string, useElk: boolean) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.landscape.useElk = useElk
+      dag.updatedAt = now()
+    }
+
     return {
       dags,
       createDag,
@@ -299,6 +306,7 @@ export const useDagStore = defineStore(
       syncFromDsl,
       saveLandscapeDsl,
       setLandscapeMode,
+      setLandscapeUseElk,
       addFlow,
       updateFlow,
       deleteFlow,

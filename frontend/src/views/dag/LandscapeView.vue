@@ -22,8 +22,11 @@ const store = useDagStore()
 
 const dag = computed(() => store.getDag(route.params.id as string))
 
-// Layout options
-const useElk = ref(false)
+// Layout options — persisté dans le store pour que le PPTX utilise le même layout
+const useElk = ref(dag.value?.landscape.useElk ?? false)
+watch(useElk, (val) => {
+  if (dag.value) store.setLandscapeUseElk(dag.value.id, val)
+})
 
 // Read-only header: frontmatter + flowchart directive (depends on ELK toggle)
 const landscapeHeader = computed(() => {

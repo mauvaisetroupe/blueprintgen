@@ -123,7 +123,8 @@ function addTitleBar(slide: PptxGenJS.Slide, title: string) {
 }
 
 function resolveLandscapeDsl(dag: Dag): string {
-  const mode = dag.landscape.mode ?? 'guided'
+  const mode   = dag.landscape.mode   ?? 'guided'
+  const useElk = dag.landscape.useElk ?? false
 
   if (mode === 'manual' && dag.landscape.mermaidDsl?.trim()) {
     // Stored DSL may be body-only or full DSL — ensure it has a header
@@ -135,11 +136,11 @@ function resolveLandscapeDsl(dag: Dag): string {
   }
 
   if (mode === 'autosync') {
-    return generateLandscapeDsl(dag, { useElk: false }, collectAllFlowRelations(dag))
+    return generateLandscapeDsl(dag, { useElk }, collectAllFlowRelations(dag))
   }
 
   // guided (default)
-  return generateLandscapeDsl(dag, { useElk: false })
+  return generateLandscapeDsl(dag, { useElk })
 }
 
 async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
