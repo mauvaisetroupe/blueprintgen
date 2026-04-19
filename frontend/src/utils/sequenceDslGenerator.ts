@@ -11,10 +11,14 @@ export { toNodeId as toParticipantId }
 // Les participants inconnus (pas dans le modèle) sont ignorés.
 export function parseFlowSteps(body: string, dag: Dag): FlowStep[] {
   const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+  const RETURN  = /^([a-zA-Z_]\w*)\s*(-->>[\+\-]?|-->[\+\-]?|--x)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
   const steps: FlowStep[] = []
   let order = 1
   for (const raw of body.split('\n')) {
-    const m = raw.trim().match(FORWARD)
+    const line = raw.trim()
+    const fwd = line.match(FORWARD)
+    const ret = fwd ? null : line.match(RETURN)
+    const m   = fwd ?? ret
     if (!m) continue
     const fromComp = dag.components.find((c) => toNodeId(c.name) === m[1])
     const toComp   = dag.components.find((c) => toNodeId(c.name) === m[3])
@@ -25,6 +29,7 @@ export function parseFlowSteps(body: string, dag: Dag): FlowStep[] {
       toComponentId:   toComp.id,
       label:           m[4].trim(),
       order:           order++,
+      isReturn:        !!ret,
     })
   }
   return steps
@@ -55,7 +60,7 @@ export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: stri
       ? flow.steps
       : parseFlowSteps(flow.mermaidDsl ?? '', dag)   // fallback pour anciens DAGs
 
-    for (const step of steps) {
+    for (const step of steps.filter((s) => !s.isReturn)) {
       const key = `${step.fromComponentId}->${step.toComponentId}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -89,7 +94,7 @@ export function findMissingLandscapeRelations(flow: ApplicationFlow, dag: Dag): 
   const seen = new Set<string>()
   const missing: MissingLandscapeRelation[] = []
 
-  for (const step of steps) {
+  for (const step of steps.filter((s) => !s.isReturn)) {
     const key = `${step.fromComponentId}->${step.toComponentId}`
     if (seen.has(key)) continue
     seen.add(key)

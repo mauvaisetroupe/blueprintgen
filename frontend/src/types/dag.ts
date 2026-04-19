@@ -48,6 +48,7 @@ export interface FlowStep {
   label?: string
   protocol?: string
   order: number
+  isReturn?: boolean   // true pour les flèches -->> (réponse), false/undefined pour les forwards
 }
 
 export interface ApplicationFlow {

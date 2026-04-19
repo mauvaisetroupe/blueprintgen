@@ -141,7 +141,7 @@ function extractFlowSteps(flow: ApplicationFlow, dag: Dag): string[] {
         })
       })()
 
-  return steps.map((s) => {
+  return steps.filter((s) => !s.isReturn).map((s) => {
     const from = dag.components.find((c) => c.id === s.fromComponentId)?.name ?? s.fromComponentId
     const to   = dag.components.find((c) => c.id === s.toComponentId)?.name   ?? s.toComponentId
     return `${from} → ${to}: ${s.label}`
