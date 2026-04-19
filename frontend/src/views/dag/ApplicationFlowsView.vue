@@ -6,11 +6,13 @@ import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, toParticipant
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
+import Menu from 'primevue/menu'
 import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
+import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 
 const route = useRoute()
 const store = useDagStore()
@@ -193,6 +195,36 @@ function updateDescription(e: Event) {
   const value = (e.target as HTMLElement).innerText.trim()
   if (selectedFlow.value && dag.value) store.updateFlow(dag.value.id, selectedFlow.value.id, { description: value })
 }
+
+// ─── Export SVG ──────────────────────────────────────────────────────────────
+
+const exportMenu = ref<InstanceType<typeof Menu>>()
+const exportMenuItems = computed(() => [
+  {
+    label: 'SVG',
+    items: [
+      { label: 'SVG — raw', icon: 'pi pi-image', command: () => exportSvg(false) },
+      { label: 'SVG — pptx-ready (inlined styles)', icon: 'pi pi-file-export', command: () => exportSvg(true) },
+    ],
+  },
+])
+
+async function exportSvg(pptxMode: boolean) {
+  if (!dag.value || !selectedFlow.value || !renderedDsl.value.trim()) return
+  const dsl = pptxMode ? injectHtmlLabelsFalse(renderedDsl.value) : renderedDsl.value
+  const id  = `export-flow-${Date.now()}`
+  const { svg } = await mermaid.render(id, dsl)
+  const processed = pptxMode ? inlineSvgStyles(svg) : svg
+  const blob = new Blob([processed], { type: 'image/svg+xml' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  const flowName = selectedFlow.value.name.replace(/[^\w\s-]/g, '').trim()
+  const modeSuffix = diagramMode.value === 'activity' ? '-activity' : '-sequence'
+  a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}-${flowName}${modeSuffix}${pptxMode ? '-pptx' : ''}.svg`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 </script>
 
 <template>
@@ -307,6 +339,16 @@ function updateDescription(e: Event) {
               option-value="value"
               size="small"
             />
+            <Button
+              icon="pi pi-download"
+              size="small"
+              severity="secondary"
+              text
+              :disabled="!renderedDsl"
+              title="Export SVG"
+              @click="exportMenu?.toggle($event)"
+            />
+            <Menu ref="exportMenu" :model="exportMenuItems" popup />
             <template v-if="diagramMode === 'activity'">
               <div class="elk-toggle">
                 <ToggleSwitch v-model="useElkActivity" input-id="elk-activity-switch" />
