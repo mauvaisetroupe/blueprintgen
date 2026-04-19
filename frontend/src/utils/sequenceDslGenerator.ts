@@ -1,8 +1,34 @@
-import type { Dag } from '@/types/dag'
+import type { Dag, ApplicationFlow, FlowStep } from '@/types/dag'
 import { toNodeId } from './landscapeDslGenerator'
 
 // Reuse the same ID convention as the landscape generator
 export { toNodeId as toParticipantId }
+
+// --- Parse DSL body → FlowStep[] ---
+
+// Parse le corps DSL d'un flow et retourne les steps structurés.
+// Seules les flèches forward sont retenues (les -->> ne font pas de step).
+// Les participants inconnus (pas dans le modèle) sont ignorés.
+export function parseFlowSteps(body: string, dag: Dag): FlowStep[] {
+  const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+  const steps: FlowStep[] = []
+  let order = 1
+  for (const raw of body.split('\n')) {
+    const m = raw.trim().match(FORWARD)
+    if (!m) continue
+    const fromComp = dag.components.find((c) => toNodeId(c.name) === m[1])
+    const toComp   = dag.components.find((c) => toNodeId(c.name) === m[3])
+    if (!fromComp || !toComp) continue
+    steps.push({
+      id:              crypto.randomUUID(),
+      fromComponentId: fromComp.id,
+      toComponentId:   toComp.id,
+      label:           m[4].trim(),
+      order:           order++,
+    })
+  }
+  return steps
+}
 
 // --- Sequence relation extraction ---
 
@@ -18,24 +44,22 @@ const REQUEST_ARROW_REGEX = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-x|->[\+\-]?)\s*([a
 // All arrows including returns — used for participant detection only
 const ANY_ARROW_REGEX = /^([a-zA-Z_]\w*)\s*(?:->>[\+\-]?|-->>[\+\-]?|-x|--x|->[\+\-]?|-->[\+\-]?)\s*([a-zA-Z_]\w*)/
 
-// Collects all unique component-level relations across all application flows
+// Collects all unique component-level relations across all application flows.
+// Utilise flow.steps (source de vérité) ; fallback DSL si steps vide (anciens DAGs).
 export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComponentId: string }> {
   const seen = new Set<string>()
   const result: Array<{ fromComponentId: string; toComponentId: string }> = []
-  const arrowRegex = REQUEST_ARROW_REGEX
 
   for (const flow of dag.applicationFlows) {
-    if (!flow.mermaidDsl?.trim()) continue
-    for (const raw of flow.mermaidDsl.split('\n')) {
-      const match = raw.trim().match(arrowRegex)
-      if (!match) continue
-      const fromComp = dag.components.find((c) => toNodeId(c.name) === match[1])
-      const toComp   = dag.components.find((c) => toNodeId(c.name) === match[2])
-      if (!fromComp || !toComp) continue
-      const key = `${fromComp.id}->${toComp.id}`
+    const steps = flow.steps.length > 0
+      ? flow.steps
+      : parseFlowSteps(flow.mermaidDsl ?? '', dag)   // fallback pour anciens DAGs
+
+    for (const step of steps) {
+      const key = `${step.fromComponentId}->${step.toComponentId}`
       if (seen.has(key)) continue
       seen.add(key)
-      result.push({ fromComponentId: fromComp.id, toComponentId: toComp.id })
+      result.push({ fromComponentId: step.fromComponentId, toComponentId: step.toComponentId })
     }
   }
   return result
@@ -55,43 +79,36 @@ export function findUnknownParticipants(body: string, dag: Dag): string[] {
   return [...unknown]
 }
 
-// Parses sequence diagram body and returns relations missing from the landscape model
-export function findMissingLandscapeRelations(body: string, dag: Dag): MissingLandscapeRelation[] {
-  const arrowRegex = REQUEST_ARROW_REGEX
+// Retourne les relations du flow absentes du landscape.
+// Utilise flow.steps ; fallback DSL si steps vide (anciens DAGs).
+export function findMissingLandscapeRelations(flow: ApplicationFlow, dag: Dag): MissingLandscapeRelation[] {
+  const steps = flow.steps.length > 0
+    ? flow.steps
+    : parseFlowSteps(flow.mermaidDsl ?? '', dag)
 
   const seen = new Set<string>()
   const missing: MissingLandscapeRelation[] = []
 
-  for (const raw of body.split('\n')) {
-    const line = raw.trim()
-    const match = line.match(arrowRegex)
-    if (!match) continue
-
-    const fromId = match[1]
-    const toId   = match[2]
-    const key    = `${fromId}->${toId}`
+  for (const step of steps) {
+    const key = `${step.fromComponentId}->${step.toComponentId}`
     if (seen.has(key)) continue
     seen.add(key)
 
-    // Resolve IDs to model components
-    const fromComp = dag.components.find((c) => toNodeId(c.name) === fromId)
-    const toComp   = dag.components.find((c) => toNodeId(c.name) === toId)
-    if (!fromComp || !toComp) continue // not model components — skip
-
-    // Check if relation already exists in landscape
     const exists = dag.relations.some(
-      (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
+      (r) => r.fromComponentId === step.fromComponentId && r.toComponentId === step.toComponentId,
     )
     if (!exists) {
+      const fromComp = dag.components.find((c) => c.id === step.fromComponentId)
+      const toComp   = dag.components.find((c) => c.id === step.toComponentId)
+      if (!fromComp || !toComp) continue
       missing.push({
-        fromCompId: fromComp.id,
-        toCompId:   toComp.id,
+        fromCompId: step.fromComponentId,
+        toCompId:   step.toComponentId,
         fromName:   fromComp.name,
         toName:     toComp.name,
       })
     }
   }
-
   return missing
 }
 

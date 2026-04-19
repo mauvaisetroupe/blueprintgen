@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, toParticipantId, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, toParticipantId, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
@@ -95,7 +95,12 @@ const renderedDsl = computed(() => {
 watch(selectedFlow, (flow) => {
   editorDsl.value = flow?.mermaidDsl ?? ''
   syntaxError.value = null
-  if (flow?.mermaidDsl && dag.value) runValidation(buildSequenceDsl(flow.mermaidDsl, dag.value))
+  if (!flow || !dag.value) return
+  // Migration : anciens flows sans steps — on parse le DSL une fois au chargement
+  if (flow.mermaidDsl?.trim() && flow.steps.length === 0) {
+    store.saveFlowSteps(dag.value.id, flow.id, parseFlowSteps(flow.mermaidDsl, dag.value))
+  }
+  runValidation(buildSequenceDsl(flow.mermaidDsl ?? '', dag.value))
 }, { immediate: true })
 
 // Autocomplete: participant IDs derived from component names
@@ -123,6 +128,8 @@ function onDslChange(value: string) {
   editorDsl.value = value
   if (!selectedFlow.value || !dag.value) return
   store.updateFlow(dag.value.id, selectedFlow.value.id, { mermaidDsl: value })
+  // Mise à jour immédiate des steps structurés (source de vérité)
+  store.saveFlowSteps(dag.value.id, selectedFlow.value.id, parseFlowSteps(value, dag.value))
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => runValidation(buildSequenceDsl(value, dag.value!)), 400)
 }
@@ -135,8 +142,8 @@ const validationStatus = computed(() => {
 
 // Relations used in this flow but absent from the landscape
 const missingRelations = computed(() => {
-  if (!dag.value || !editorDsl.value.trim()) return []
-  return findMissingLandscapeRelations(editorDsl.value, dag.value)
+  if (!dag.value || !selectedFlow.value) return []
+  return findMissingLandscapeRelations(selectedFlow.value, dag.value)
 })
 
 const unknownParticipants = computed(() => {

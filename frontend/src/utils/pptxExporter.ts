@@ -1,6 +1,6 @@
 import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
-import type { Dag } from '@/types/dag'
+import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
 import { buildSequenceDsl, buildActivityDsl, collectAllFlowRelations } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
@@ -128,16 +128,24 @@ function containRect(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Extracts forward-arrow steps from a sequence body DSL
-// Returns strings like "A → B: label"
-function extractFlowSteps(body: string): string[] {
-  const REQUEST_ARROW = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
-  const steps: string[] = []
-  for (const raw of body.split('\n')) {
-    const m = raw.trim().match(REQUEST_ARROW)
-    if (m) steps.push(`${m[1]} → ${m[3]}: ${m[4].trim()}`)
-  }
-  return steps
+// Retourne les labels de bullets depuis flow.steps (source de vérité).
+// Fallback DSL si steps vide (anciens DAGs non migrés).
+function extractFlowSteps(flow: ApplicationFlow, dag: Dag): string[] {
+  const steps = flow.steps.length > 0
+    ? flow.steps
+    : (() => {
+        const REQUEST_ARROW = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+        return (flow.mermaidDsl ?? '').split('\n').flatMap((raw) => {
+          const m = raw.trim().match(REQUEST_ARROW)
+          return m ? [{ fromComponentId: m[1], toComponentId: m[3], label: m[4].trim(), id: '', order: 0 }] : []
+        })
+      })()
+
+  return steps.map((s) => {
+    const from = dag.components.find((c) => c.id === s.fromComponentId)?.name ?? s.fromComponentId
+    const to   = dag.components.find((c) => c.id === s.toComponentId)?.name   ?? s.toComponentId
+    return `${from} → ${to}: ${s.label}`
+  })
 }
 
 // ─── Slide builders ───────────────────────────────────────────────────────────
@@ -231,13 +239,10 @@ function addSectionHeader(
   return labelH + ruleH  // height consumed
 }
 
-async function addFlowSlide(
-  pptx: PptxGenJS,
-  dag: Dag,
-  flowName: string,
-  flowDescription: string,
-  flowBody: string,
-) {
+async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
+  const flowName        = flow.name
+  const flowDescription = flow.description ?? ''
+  const flowBody        = flow.mermaidDsl  ?? ''
   const slide = pptx.addSlide()
   addTitleBar(slide, flowName)
 
@@ -283,7 +288,7 @@ async function addFlowSlide(
     })
   }
 
-  const steps = extractFlowSteps(flowBody)
+  const steps = extractFlowSteps(flow, dag)
   for (let i = 0; i < steps.length; i++) {
     const circle = CIRCLED_DIGITS[i] ?? `${i + 1}.`
     rows.push({
@@ -318,7 +323,7 @@ export async function exportToPptx(dag: Dag): Promise<void> {
   // 2. One slide per application flow
   for (const flow of dag.applicationFlows) {
     if (!flow.mermaidDsl?.trim()) continue
-    await addFlowSlide(pptx, dag, flow.name, flow.description ?? '', flow.mermaidDsl)
+    await addFlowSlide(pptx, dag, flow)
   }
 
   await pptx.writeFile({ fileName: `${dag.name.replace(/[^\w\s-]/g, '').trim()}.pptx` })

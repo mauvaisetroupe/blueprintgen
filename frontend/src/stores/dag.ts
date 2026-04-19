@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type LandscapeMode, type FlowsViewOptions, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type LandscapeMode, type FlowsViewOptions, type FlowStep, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -261,6 +261,15 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    function saveFlowSteps(dagId: string, flowId: string, steps: FlowStep[]) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      const flow = dag.applicationFlows.find((f) => f.id === flowId)
+      if (!flow) return
+      flow.steps = steps
+      dag.updatedAt = now()
+    }
+
     function deleteFlow(dagId: string, flowId: string) {
       const dag = getDag(dagId)
       if (!dag) return
@@ -316,6 +325,7 @@ export const useDagStore = defineStore(
       saveLandscapeDsl,
       setLandscapeMode,
       setLandscapeUseElk,
+      saveFlowSteps,
       updateFlowsView,
       addFlow,
       updateFlow,
