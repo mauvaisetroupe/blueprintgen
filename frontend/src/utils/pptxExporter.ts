@@ -2,7 +2,7 @@ import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
 import type { Dag } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
-import { buildSequenceDsl } from './sequenceDslGenerator'
+import { buildSequenceDsl, collectAllFlowRelations } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
 
 // Widescreen 13.33" × 7.5"
@@ -122,11 +122,31 @@ function addTitleBar(slide: PptxGenJS.Slide, title: string) {
   })
 }
 
+function resolveLandscapeDsl(dag: Dag): string {
+  const mode = dag.landscape.mode ?? 'guided'
+
+  if (mode === 'manual' && dag.landscape.mermaidDsl?.trim()) {
+    // Stored DSL may be body-only or full DSL — ensure it has a header
+    const stored = dag.landscape.mermaidDsl.trim()
+    if (stored.startsWith('---') || /^(?:flowchart|graph)\s/m.test(stored)) {
+      return stored
+    }
+    return `---\nconfig:\n    theme: neutral\n---\n\nflowchart TB\n${stored}`
+  }
+
+  if (mode === 'autosync') {
+    return generateLandscapeDsl(dag, { useElk: false }, collectAllFlowRelations(dag))
+  }
+
+  // guided (default)
+  return generateLandscapeDsl(dag, { useElk: false })
+}
+
 async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
   const slide = pptx.addSlide()
   addTitleBar(slide, dag.name + ' — Application Landscape')
 
-  const dsl = generateLandscapeDsl(dag, { useElk: false })
+  const dsl = resolveLandscapeDsl(dag)
   const png = await renderMermaidToPng(dsl)
 
   // Image fills the area below the title bar
