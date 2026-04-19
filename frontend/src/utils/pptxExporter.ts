@@ -10,9 +10,11 @@ const SLIDE_W = 13.33
 const SLIDE_H = 7.5
 
 // Corporate colours (neutral — adapt to template later)
-const COLOR_TITLE_BG  = '1F3864'   // dark blue
+const COLOR_TITLE_BG  = '1F3864'   // dark blue (landscape title bar)
 const COLOR_TITLE_FG  = 'FFFFFF'
-const COLOR_ACCENT    = 'F5C400'   // yellow for step bullets
+const COLOR_ACCENT    = '2D6FBF'   // blue for circled digits
+const COLOR_LABEL     = '888888'   // grey for section labels
+const COLOR_RULE      = 'BBBBBB'   // light grey for section rules
 
 // ─── Mermaid → PNG via canvas ────────────────────────────────────────────────
 //
@@ -105,18 +107,20 @@ async function renderMermaidToPng(dsl: string): Promise<PngResult> {
 }
 
 // Calcule les coordonnées exactes (en pouces) pour placer une image de naturalW×naturalH px
-// dans le rectangle disponible (anchorX, anchorY, availW, availH), centrée, ratio préservé.
+// dans le rectangle disponible, ratio préservé.
+// vAlign: 'center' (défaut) ou 'top' (aligne en haut, pas de marge verticale)
 function containRect(
   naturalW: number, naturalH: number,
   anchorX: number, anchorY: number,
   availW: number,  availH: number,
+  vAlign: 'center' | 'top' = 'center',
 ): { x: number; y: number; w: number; h: number } {
   const scale = Math.min(availW / naturalW, availH / naturalH)
   const w = naturalW * scale
   const h = naturalH * scale
   return {
     x: anchorX + (availW - w) / 2,
-    y: anchorY + (availH - h) / 2,
+    y: vAlign === 'top' ? anchorY : anchorY + (availH - h) / 2,
     w,
     h,
   }
@@ -186,41 +190,90 @@ async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
   slide.addImage({ data: dataUrl, ...pos })
 }
 
-async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flowName: string, flowBody: string) {
+// Unicode circled digits ①–⑳
+const CIRCLED_DIGITS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+                        '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
+
+function addSectionHeader(
+  slide: PptxGenJS.Slide,
+  label: string,
+  x: number, y: number, w: number,
+) {
+  const labelH = 0.28
+  const ruleH  = 0.018
+  slide.addText(label, {
+    x, y, w, h: labelH,
+    fontSize: 12, bold: true, color: COLOR_LABEL,
+    valign: 'bottom',
+  })
+  slide.addShape('rect', {
+    x, y: y + labelH, w, h: ruleH,
+    fill: { color: COLOR_RULE },
+    line: { color: COLOR_RULE },
+  })
+  return labelH + ruleH  // height consumed
+}
+
+async function addFlowSlide(
+  pptx: PptxGenJS,
+  dag: Dag,
+  flowName: string,
+  flowDescription: string,
+  flowBody: string,
+) {
   const slide = pptx.addSlide()
   addTitleBar(slide, flowName)
 
+  // ── Layout ──────────────────────────────────────────────────────────────────
+  const PAD    = 0.3
+  const SPLIT  = 0.60
+  const leftX  = PAD
+  const leftW  = SLIDE_W * SPLIT - PAD
+  const rightX = SLIDE_W * SPLIT + PAD * 0.5
+  const rightW = SLIDE_W - rightX - PAD
+
+  // ── Section headers ──────────────────────────────────────────────────────
+  const headerY  = 0.65
+  const consumed = addSectionHeader(slide, 'Conceptual view of the target Architecture', leftX,  headerY, leftW)
+                   addSectionHeader(slide, 'Description',                                rightX, headerY, rightW)
+
+  // ── Content area (below section headers) ────────────────────────────────
+  const contentY = headerY + consumed + 0.12
+  const contentH = SLIDE_H - contentY - 0.15
+
+  // ── Sequence diagram — left panel ────────────────────────────────────────
   const fullDsl = buildSequenceDsl(flowBody, dag)
   const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(fullDsl)
-
-  const contentY = 0.65
-  const contentH = SLIDE_H - contentY - 0.1
-  const imgW     = SLIDE_W * 0.63
-  const bulletsX = imgW + 0.4
-  const bulletsW = SLIDE_W - bulletsX - 0.2
-
-  // Sequence diagram — left panel, ratio préservé
-  const pos = containRect(naturalW, naturalH, 0.15, contentY, imgW, contentH)
+  const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })
 
-  // Numbered steps — right panel
+  // ── Description + numbered steps — right panel ───────────────────────────
+  const rows: PptxGenJS.TextProps[] = []
+
+  if (flowDescription.trim()) {
+    rows.push({
+      text: flowDescription.trim() + '\n\n',
+      options: { bold: true, fontSize: 12, color: '1A1A1A' },
+    })
+  }
+
   const steps = extractFlowSteps(flowBody)
-  if (steps.length > 0) {
-    const bulletRows: PptxGenJS.TextProps[] = steps.flatMap((step, i) => [
-      {
-        text: `${i + 1}. `,
-        options: { bold: true, color: COLOR_ACCENT, fontSize: 11 },
-      },
-      {
-        text: step + '\n',
-        options: { bold: false, color: '333333', fontSize: 11 },
-      },
-    ])
-    slide.addText(bulletRows, {
-      x: bulletsX, y: contentY, w: bulletsW, h: contentH,
-      valign: 'top',
-      wrap: true,
-      lineSpacingMultiple: 1.3,
+  for (let i = 0; i < steps.length; i++) {
+    const circle = CIRCLED_DIGITS[i] ?? `${i + 1}.`
+    rows.push({
+      text: `${circle}  `,
+      options: { bold: true, color: COLOR_ACCENT, fontSize: 11 },
+    })
+    rows.push({
+      text: steps[i] + '\n',
+      options: { bold: false, color: '333333', fontSize: 11 },
+    })
+  }
+
+  if (rows.length > 0) {
+    slide.addText(rows, {
+      x: rightX, y: contentY, w: rightW, h: contentH,
+      valign: 'top', wrap: true, lineSpacingMultiple: 1.4,
     })
   }
 }
@@ -239,7 +292,7 @@ export async function exportToPptx(dag: Dag): Promise<void> {
   // 2. One slide per application flow
   for (const flow of dag.applicationFlows) {
     if (!flow.mermaidDsl?.trim()) continue
-    await addFlowSlide(pptx, dag, flow.name, flow.mermaidDsl)
+    await addFlowSlide(pptx, dag, flow.name, flow.description ?? '', flow.mermaidDsl)
   }
 
   await pptx.writeFile({ fileName: `${dag.name.replace(/[^\w\s-]/g, '').trim()}.pptx` })
