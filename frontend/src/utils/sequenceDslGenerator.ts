@@ -27,7 +27,7 @@ export function parseFlowSteps(body: string, dag: Dag): FlowStep[] {
       id:              crypto.randomUUID(),
       fromComponentId: fromComp.id,
       toComponentId:   toComp.id,
-      label:           m[4].trim(),
+      label:           (m[4] ?? '').trim(),
       order:           order++,
       isReturn:        !!ret,
     })
@@ -78,8 +78,8 @@ export function findUnknownParticipants(body: string, dag: Dag): string[] {
   for (const raw of body.split('\n')) {
     const match = raw.trim().match(arrowRegex)
     if (!match) continue
-    if (!knownIds.has(match[1])) unknown.add(match[1])
-    if (!knownIds.has(match[2])) unknown.add(match[2])
+    if (match[1] && !knownIds.has(match[1])) unknown.add(match[1])
+    if (match[2] && !knownIds.has(match[2])) unknown.add(match[2])
   }
   return [...unknown]
 }
@@ -155,17 +155,19 @@ export function buildActivityDsl(
     const line = raw.trim()
     const fwd = line.match(FORWARD)
     if (fwd) {
-      participantIds.add(fwd[1])
-      participantIds.add(fwd[3])
-      edges.push({ from: fwd[1], to: fwd[3], label: fwd[4].trim(), dashed: false, circle: CIRCLED_DIGITS[idx++] ?? `${idx}.` })
+      const f1 = fwd[1] ?? '', f3 = fwd[3] ?? '', f4 = (fwd[4] ?? '').trim()
+      participantIds.add(f1)
+      participantIds.add(f3)
+      edges.push({ from: f1, to: f3, label: f4, dashed: false, circle: CIRCLED_DIGITS[idx++] ?? `${idx}.` })
       continue
     }
     if (showReturns) {
       const ret = line.match(RETURN)
       if (ret) {
-        participantIds.add(ret[1])
-        participantIds.add(ret[3])
-        edges.push({ from: ret[1], to: ret[3], label: ret[4].trim(), dashed: true })
+        const r1 = ret[1] ?? '', r3 = ret[3] ?? '', r4 = (ret[4] ?? '').trim()
+        participantIds.add(r1)
+        participantIds.add(r3)
+        edges.push({ from: r1, to: r3, label: r4, dashed: true })
       }
     }
   }
@@ -227,7 +229,7 @@ export function buildSequenceDsl(body: string, dag: Dag): string {
   const wordRegex = /\b([a-zA-Z_]\w*)\b/g
   let match: RegExpExecArray | null
   while ((match = wordRegex.exec(body)) !== null) {
-    if (componentMap.has(match[1])) referencedIds.add(match[1])
+    if (match[1] && componentMap.has(match[1])) referencedIds.add(match[1])
   }
 
   const lines = ['sequenceDiagram']

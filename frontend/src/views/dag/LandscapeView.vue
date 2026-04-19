@@ -46,7 +46,7 @@ const generatedDsl = computed(() => {
 // Strips the header (frontmatter + flowchart directive) from a full DSL, returning the body only
 function extractBody(fullDsl: string): string {
   const match = fullDsl.match(/(?:flowchart|graph)\s+\w+\r?\n?([\s\S]*)$/)
-  return match ? match[1] : fullDsl
+  return match?.[1] ?? fullDsl
 }
 
 // Editor mode — persisted in store

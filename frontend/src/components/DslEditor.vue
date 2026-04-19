@@ -48,7 +48,7 @@ function completionSource(context: CompletionContext): CompletionResult | null {
   const atStart = textToCursor.match(/^\s*(\w+)$/)
   if (atStart) {
     return {
-      from: context.pos - (atStart[1].length),
+      from: context.pos - (atStart[1]?.length ?? 0),
       options: names.map((n) => ({ label: n, type: 'variable' as const })),
     }
   }

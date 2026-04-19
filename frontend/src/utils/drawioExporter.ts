@@ -33,7 +33,7 @@ interface Bounds { x: number; y: number; w: number; h: number }
 function parseTranslate(transform: string | null): { x: number; y: number } {
   if (!transform) return { x: 0, y: 0 }
   const m = transform.match(/translate\(\s*([\d.+-]+)[\s,]+([\d.+-]+)\s*\)/)
-  return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 }
+  return m ? { x: parseFloat(m[1] ?? '0'), y: parseFloat(m[2] ?? '0') } : { x: 0, y: 0 }
 }
 
 /**

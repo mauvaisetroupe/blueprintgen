@@ -25,7 +25,6 @@ function deleteDag(dagId: string, dagName: string, event: MouseEvent) {
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel',
     acceptLabel: 'Delete',
-    acceptSeverity: 'danger',
     accept: () => store.deleteDag(dagId),
   })
 }

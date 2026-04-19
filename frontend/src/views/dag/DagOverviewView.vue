@@ -71,7 +71,7 @@ const generatedBody = computed(() => {
   if (!dag.value) return ''
   const full = generateLandscapeDsl(dag.value, { useElk: false }, [])
   const match = full.match(/(?:flowchart|graph)\s+\w+\r?\n?([\s\S]*)$/)
-  return match ? match[1] : ''
+  return match?.[1] ?? ''
 })
 
 function loadDslBody(): string {

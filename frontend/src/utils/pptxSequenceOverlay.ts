@@ -96,6 +96,7 @@ export function extractActivityStepPositions(
 
   for (let i = 0; i < Math.min(forwardCount, labelEls.length); i++) {
     const el = labelEls[i]
+    if (!el) continue
     // g.edgeLabel est transformé (translate) — getBBox n'est pas disponible hors DOM monté,
     // on remonte via les attributs transform de l'ancêtre
     const labelGroup = el.closest('g.edgeLabel')
@@ -103,8 +104,8 @@ export function extractActivityStepPositions(
 
     const transform = (labelGroup as SVGGElement).getAttribute('transform') ?? ''
     const m = transform.match(/translate\(\s*([\d.+-]+)[\s,]+([\d.+-]+)\s*\)/)
-    const offsetX = m ? parseFloat(m[1]) : 0
-    const offsetY = m ? parseFloat(m[2]) : 0
+    const offsetX = m ? parseFloat(m[1] ?? '0') : 0
+    const offsetY = m ? parseFloat(m[2] ?? '0') : 0
 
     const x = offsetX + parseFloat(el.getAttribute('x') ?? '0')
     const y = offsetY + parseFloat(el.getAttribute('y') ?? '0') - 4

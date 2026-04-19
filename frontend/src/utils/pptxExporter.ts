@@ -61,8 +61,8 @@ function normalizeSvgDimensions(svgString: string): { svg: string; w: number; h:
   const vb = el.getAttribute('viewBox')
   if (vb) {
     const parts = vb.trim().split(/[\s,]+/).map(Number)
-    if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
-      w = parts[2]; h = parts[3]
+    if (parts.length >= 4 && (parts[2] ?? 0) > 0 && (parts[3] ?? 0) > 0) {
+      w = parts[2] ?? 0; h = parts[3] ?? 0
     }
   }
   if (!w || !h) {
@@ -139,7 +139,7 @@ function extractFlowSteps(flow: ApplicationFlow, dag: Dag): string[] {
         const REQUEST_ARROW = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
         return (flow.mermaidDsl ?? '').split('\n').flatMap((raw) => {
           const m = raw.trim().match(REQUEST_ARROW)
-          return m ? [{ fromComponentId: m[1], toComponentId: m[3], label: m[4].trim(), id: '', order: 0 }] : []
+          return m ? [{ fromComponentId: m[1] ?? '', toComponentId: m[3] ?? '', label: (m[4] ?? '').trim(), id: '', order: 0, isReturn: false }] : []
         })
       })()
 

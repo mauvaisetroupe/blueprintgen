@@ -37,7 +37,7 @@ export function parseImportDsl(input: string): ImportResult {
     const commentMatch = trimmed.match(/^%%\s*(.*)$/)
     if (commentMatch) {
       if (currentFlow) flows.push(currentFlow)
-      const flowName = commentMatch[1].trim()
+      const flowName = (commentMatch[1] ?? '').trim()
       currentFlow = { name: flowName || `Flow ${flows.length + 1}`, lines: [] }
       inLandscape = false
       continue

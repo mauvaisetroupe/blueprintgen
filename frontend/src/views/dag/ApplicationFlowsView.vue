@@ -97,7 +97,7 @@ const renderedDsl = computed(() => {
 
 // Sélectionne le premier flow au chargement si aucun n'est sélectionné
 if (!selectedFlowId.value && dag.value?.applicationFlows.length) {
-  selectedFlowId.value = dag.value.applicationFlows[0].id
+  selectedFlowId.value = dag.value.applicationFlows[0]?.id ?? null
 }
 
 watch(selectedFlow, (flow) => {
