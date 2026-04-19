@@ -24,8 +24,12 @@ const CIRCLED_DIGITS = [
 ]
 
 // Taille de l'overlay (en pouces)
-const OVERLAY_SIZE   = 0.24
+const OVERLAY_SIZE   = 0.30
 const OVERLAY_COLOR  = '2D6FBF'   // bleu — même que les bullets du panneau droit
+
+// Décalage horizontal en pouces : le ① est au début du label centré (text-anchor="middle"),
+// donc svgX pointe sur le centre du texte, pas sur le ①. On compense vers la gauche.
+const LABEL_START_OFFSET_IN = 0.15
 
 export interface OverlayPosition {
   circle: string
@@ -133,7 +137,9 @@ export function addNumberOverlays(
   const scaleY = imgPlacement.h / svgH
 
   for (const { circle, svgX, svgY } of positions) {
-    const cx = imgPlacement.x + svgX * scaleX
+    // svgX est le centre du label (text-anchor="middle") ; le ① est au début du texte,
+    // donc on décale vers la gauche pour le couvrir.
+    const cx = imgPlacement.x + svgX * scaleX - LABEL_START_OFFSET_IN
     const cy = imgPlacement.y + svgY * scaleY
 
     const x = cx - OVERLAY_SIZE / 2
@@ -145,7 +151,7 @@ export function addNumberOverlays(
       x, y, w: OVERLAY_SIZE, h: OVERLAY_SIZE,
       fill: { color: 'FFFFFF' },
       line: { color: 'FFFFFF' },
-      fontSize: 11, bold: true, color: OVERLAY_COLOR,
+      fontSize: 16, bold: true, color: OVERLAY_COLOR,
       align: 'center', valign: 'middle',
     })
   }
