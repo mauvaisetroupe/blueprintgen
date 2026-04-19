@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type LandscapeMode, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type LandscapeMode, type FlowsViewOptions, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -32,6 +32,7 @@ export const useDagStore = defineStore(
         landscape: {},
         technicalLandscape: { components: [] },
         applicationFlows: [],
+        flowsView: {},
       }
       dags.value.push(dag)
       return dag
@@ -50,7 +51,8 @@ export const useDagStore = defineStore(
     function getDag(id: string): Dag | undefined {
       const dag = dags.value.find((d) => d.id === id)
       // Migrate DAGs created before new fields were added
-      if (dag && !dag.relations) dag.relations = []
+      if (dag && !dag.relations)   dag.relations   = []
+      if (dag && !dag.flowsView)  dag.flowsView   = {}
       return dag
     }
 
@@ -288,6 +290,13 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    function updateFlowsView(dagId: string, patch: Partial<FlowsViewOptions>) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      Object.assign(dag.flowsView, patch)
+      dag.updatedAt = now()
+    }
+
     return {
       dags,
       createDag,
@@ -307,6 +316,7 @@ export const useDagStore = defineStore(
       saveLandscapeDsl,
       setLandscapeMode,
       setLandscapeUseElk,
+      updateFlowsView,
       addFlow,
       updateFlow,
       deleteFlow,

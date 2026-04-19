@@ -70,6 +70,15 @@ export interface Relation {
   source?: 'manual'
 }
 
+// --- Flows view options ---
+
+export interface FlowsViewOptions {
+  diagramMode?: 'sequence' | 'activity'
+  useElk?: boolean
+  showReturns?: boolean
+  subgraphCategoryIds?: string[]   // undefined = toutes les catégories activées
+}
+
 // --- DAG root ---
 
 export interface Dag {
@@ -88,6 +97,7 @@ export interface Dag {
   landscape: Landscape
   technicalLandscape: TechnicalLandscape
   applicationFlows: ApplicationFlow[]
+  flowsView: FlowsViewOptions
 }
 
 // Default categories based on the reference Mermaid example

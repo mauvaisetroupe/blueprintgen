@@ -2,7 +2,7 @@ import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
 import type { Dag } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
-import { buildSequenceDsl, collectAllFlowRelations } from './sequenceDslGenerator'
+import { buildSequenceDsl, buildActivityDsl, collectAllFlowRelations } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
 
 // Widescreen 13.33" × 7.5"
@@ -258,9 +258,17 @@ async function addFlowSlide(
   const contentY = headerY + consumed + 0.12
   const contentH = SLIDE_H - contentY - 0.15
 
-  // ── Sequence diagram — left panel ────────────────────────────────────────
-  // On numérote les flèches dans le DSL avant rendu — le DSL original n'est pas modifié
-  const fullDsl = buildSequenceDsl(numberForwardArrows(flowBody), dag)
+  // ── Sequence ou Activity diagram selon les préférences sauvegardées ──────
+  const fv         = dag.flowsView ?? {}
+  const isActivity = fv.diagramMode === 'activity'
+  const fullDsl    = isActivity
+    ? buildActivityDsl(
+        flowBody, dag,
+        fv.useElk          ?? true,
+        new Set(fv.subgraphCategoryIds ?? dag.categories.map((c) => c.id)),
+        fv.showReturns     ?? false,
+      )
+    : buildSequenceDsl(numberForwardArrows(flowBody), dag)
   const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(fullDsl)
   const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })

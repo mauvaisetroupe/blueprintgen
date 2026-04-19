@@ -31,24 +31,42 @@ const syntaxError = ref<string | null>(null)
 const isValidating = ref(false)
 
 // Mode de visualisation du diagramme (affecte tous les flows)
+// Valeurs initiales lues depuis le store (persistance entre recharges)
 type DiagramMode = 'sequence' | 'activity'
-const diagramMode = ref<DiagramMode>('sequence')
 const diagramModeOptions = [
   { label: 'Sequence', value: 'sequence' },
   { label: 'Activity', value: 'activity' },
 ]
-const useElkActivity    = ref(true)
-const showReturnArrows  = ref(false)
 
-// Catégories affichées en subgraph dans le mode activity
-// Initialisées avec toutes les catégories activées
-const activitySubgraphs = ref<Set<string>>(new Set(dag.value?.categories.map((c) => c.id) ?? []))
+function allCategoryIds() { return new Set(dag.value?.categories.map((c) => c.id) ?? []) }
+
+const fv = dag.value?.flowsView ?? {}
+const diagramMode       = ref<DiagramMode>(fv.diagramMode    ?? 'sequence')
+const useElkActivity    = ref<boolean>    (fv.useElk          ?? true)
+const showReturnArrows  = ref<boolean>    (fv.showReturns     ?? false)
+const activitySubgraphs = ref<Set<string>>(
+  fv.subgraphCategoryIds ? new Set(fv.subgraphCategoryIds) : allCategoryIds(),
+)
 
 function toggleActivitySubgraph(categoryId: string, checked: boolean) {
   const next = new Set(activitySubgraphs.value)
   checked ? next.add(categoryId) : next.delete(categoryId)
   activitySubgraphs.value = next
 }
+
+// Persiste les options dans le store à chaque changement
+watch(
+  [diagramMode, useElkActivity, showReturnArrows, activitySubgraphs],
+  () => {
+    if (!dag.value) return
+    store.updateFlowsView(dag.value.id, {
+      diagramMode:         diagramMode.value,
+      useElk:              useElkActivity.value,
+      showReturns:         showReturnArrows.value,
+      subgraphCategoryIds: [...activitySubgraphs.value],
+    })
+  },
+)
 
 // Catégories qui ont au moins un participant dans le flow courant
 const activeCategoryIds = computed(() => {
