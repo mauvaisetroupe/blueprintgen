@@ -149,8 +149,10 @@ const validationStatus = computed(() => {
 })
 
 // Relations used in this flow but absent from the landscape
+// When autosync is on, flow relations are already included in the diagram — no warning needed
 const missingRelations = computed(() => {
   if (!dag.value || !selectedFlow.value) return []
+  if (dag.value.landscape.autoSync) return []
   return findMissingLandscapeRelations(selectedFlow.value, dag.value)
 })
 
