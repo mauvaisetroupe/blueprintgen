@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { exportToPptx } from '@/utils/pptxExporter'
@@ -7,11 +7,33 @@ import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import Button from 'primevue/button'
+import SelectButton from 'primevue/selectbutton'
 
 const route = useRoute()
 const store = useDagStore()
 
 const dag = computed(() => store.getDag(route.params.id as string))
+
+// ── Edit mode (guided | manual) — partagé entre les onglets via provide/inject ──
+const isFlowsTab = computed(() => route.path.endsWith('/flows'))
+
+const editMode = ref<'guided' | 'manual'>(
+  dag.value?.landscape.mode === 'manual' ? 'manual' : 'guided',
+)
+
+// Synchronise le store quand le mode change (sauf quand on est sur Flows où c'est forcé)
+watch(editMode, (mode) => {
+  if (dag.value && !isFlowsTab.value) {
+    store.setLandscapeMode(dag.value.id, mode)
+  }
+})
+
+provide('editMode', editMode)
+
+const modeOptions = [
+  { label: 'Guided',   value: 'guided' },
+  { label: 'Edit DSL', value: 'manual' },
+]
 
 const tabs = [
   { label: 'Components',           route: '',           value: '0' },
@@ -50,6 +72,15 @@ function saveLocally() {
     <div class="detail-header">
       <h2>{{ dag.name }}</h2>
       <div class="header-actions">
+        <SelectButton
+          :model-value="isFlowsTab ? 'manual' : editMode"
+          :options="modeOptions"
+          option-label="label"
+          option-value="value"
+          :disabled="isFlowsTab"
+          size="small"
+          @update:model-value="editMode = $event"
+        />
         <Button
           icon="pi pi-save"
           size="small"

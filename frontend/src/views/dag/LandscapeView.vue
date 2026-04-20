@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import {
@@ -18,7 +18,6 @@ import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
-import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
@@ -42,14 +41,8 @@ watch(autoSync, (val) => {
   if (dag.value) store.setLandscapeAutoSync(dag.value.id, val)
 })
 
-// ── Mode : guided | manual ────────────────────────────────────────────────────
-const editMode = ref<'guided' | 'manual'>(
-  dag.value?.landscape.mode === 'manual' ? 'manual' : 'guided',
-)
-const modeOptions = [
-  { label: 'Guided',   value: 'guided' },
-  { label: 'Edit DSL', value: 'manual' },
-]
+// ── Mode : guided | manual — injecté depuis DagDetailLayout ──────────────────
+const editMode = inject<Ref<'guided' | 'manual'>>('editMode')!
 
 // ── DSL editor state (manuel uniquement) ─────────────────────────────────────
 
@@ -72,23 +65,13 @@ const dslReadOnlyFooter = computed(() => {
   return body || ''
 })
 
-function switchToManual() {
-  if (!dag.value) return
-  editMode.value = 'manual'
-  store.setLandscapeMode(dag.value.id, 'manual')
-  runValidation()
-}
-
-function switchToGuided() {
-  editMode.value = 'guided'
-  syntaxError.value = null
-  functionalResult.value = null
-  if (dag.value) store.setLandscapeMode(dag.value.id, 'guided')
-}
-
 watch(editMode, (mode) => {
   if (mode === 'manual' && dag.value) {
     localRelationsBody.value = generateManualRelationsBody(dag.value)
+    runValidation()
+  } else if (mode === 'guided') {
+    syntaxError.value = null
+    functionalResult.value = null
   }
 })
 
@@ -242,14 +225,6 @@ async function copyMermaid() {
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <SelectButton
-        v-model="editMode"
-        :options="modeOptions"
-        option-label="label"
-        option-value="value"
-        @change="editMode === 'manual' ? switchToManual() : switchToGuided()"
-      />
-
       <div class="elk-toggle">
         <ToggleSwitch v-model="useElk" input-id="elk-switch" />
         <label for="elk-switch">ELK</label>

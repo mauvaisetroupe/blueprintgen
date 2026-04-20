@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { generateComponentsBody } from '@/utils/landscapeDslGenerator'
@@ -9,7 +9,6 @@ import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
-import SelectButton from 'primevue/selectbutton'
 import mermaid from 'mermaid'
 
 const route = useRoute()
@@ -56,34 +55,14 @@ function submitAddCategory() {
   addingCategory.value = false
 }
 
-// --- DSL mode ---
-const viewMode = ref<'guided' | 'dsl'>('guided')
-const modeOptions = [
-  { label: 'Guided', value: 'guided' },
-  { label: 'DSL',    value: 'dsl' },
-]
+// --- DSL mode — injecté depuis DagDetailLayout ---
+const editMode = inject<Ref<'guided' | 'manual'>>('editMode')!
 
 // Read-only header shown above the DSL editor
 const dslHeader = 'flowchart TB'
 
 // Body generated from the model (nodes + subgraphs, no relations)
-const generatedBody = computed(() => {
-  if (!dag.value) return ''
-  return generateComponentsBody(dag.value)
-})
-
-function loadDslBody(): string {
-  return generatedBody.value
-}
-
 const dslBody = ref('')
-
-function onSwitchToDsl() {
-  dslBody.value = loadDslBody()
-  syntaxError.value = null
-  functionalResult.value = null
-  runValidation(dslHeader + '\n' + dslBody.value)
-}
 
 // Validation
 const syntaxError = ref<string | null>(null)
@@ -107,6 +86,15 @@ async function runValidation(code: string) {
   if (dag.value) functionalResult.value = validateDslAgainstModel(dslHeader + '\n' + dslBody.value, dag.value)
   isValidating.value = false
 }
+
+watch(editMode, (mode) => {
+  if (mode === 'manual' && dag.value) {
+    dslBody.value = generateComponentsBody(dag.value)
+    syntaxError.value = null
+    functionalResult.value = null
+    runValidation(dslHeader + '\n' + dslBody.value)
+  }
+}, { immediate: true })
 
 function onDslChange(value: string) {
   dslBody.value = value
@@ -156,16 +144,8 @@ const validationStatus = computed(() => {
       <div class="section-header">
         <h3>Categories & Components</h3>
         <div class="section-header-actions">
-          <SelectButton
-            v-model="viewMode"
-            :options="modeOptions"
-            option-label="label"
-            option-value="value"
-            size="small"
-            @change="viewMode === 'dsl' ? onSwitchToDsl() : null"
-          />
           <Button
-            v-if="viewMode === 'guided' && !addingCategory"
+            v-if="editMode === 'guided' && !addingCategory"
             label="Add category"
             icon="pi pi-plus"
             size="small"
@@ -175,7 +155,7 @@ const validationStatus = computed(() => {
       </div>
 
       <!-- Guided mode -->
-      <template v-if="viewMode === 'guided'">
+      <template v-if="editMode === 'guided'">
         <div v-if="addingCategory" class="add-category-form">
           <InputText
             v-model="newCategoryName"
