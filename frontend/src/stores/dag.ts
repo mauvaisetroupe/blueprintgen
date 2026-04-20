@@ -60,10 +60,9 @@ export const useDagStore = defineStore(
         createdAt: now(),
         updatedAt: now(),
         landscape: {
-          ...data.landscape,
-          mermaidDsl: (data.landscape?.mermaidDsl === '__vue_devtool_undefined__')
-            ? undefined
-            : data.landscape?.mermaidDsl,
+          mode:      data.landscape?.mode,
+          useElk:    data.landscape?.useElk,
+          autoSync:  data.landscape?.autoSync,
         },
         // Champs ajoutés dans les versions récentes — migration défensive
         relations:          data.relations          ?? [],
@@ -306,16 +305,6 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
-    // --- Save landscape DSL ---
-    function saveLandscapeDsl(dagId: string, dsl: string | undefined) {
-      const dag = getDag(dagId)
-      if (!dag) return
-      // Sanitize Vue devtools sentinel that gets written when the value is undefined
-      const clean = (!dsl || dsl === '__vue_devtool_undefined__') ? undefined : dsl
-      dag.landscape.mermaidDsl = clean
-      dag.updatedAt = now()
-    }
-
     function setLandscapeMode(dagId: string, mode: LandscapeMode) {
       const dag = getDag(dagId)
       if (!dag) return
@@ -327,6 +316,30 @@ export const useDagStore = defineStore(
       const dag = getDag(dagId)
       if (!dag) return
       dag.landscape.useElk = useElk
+      dag.updatedAt = now()
+    }
+
+    function setLandscapeAutoSync(dagId: string, autoSync: boolean) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.landscape.autoSync = autoSync
+      dag.updatedAt = now()
+    }
+
+    /** Remplace toutes les relations manuelles du landscape par celles parsées depuis l'éditeur DSL. */
+    function replaceManualRelations(
+      dagId: string,
+      relations: Array<{ fromComponentId: string; toComponentId: string; label?: string }>,
+    ) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.relations = relations.map((r) => ({
+        id:              generateId(),
+        fromComponentId: r.fromComponentId,
+        toComponentId:   r.toComponentId,
+        label:           r.label,
+        source:          'manual' as const,
+      }))
       dag.updatedAt = now()
     }
 
@@ -354,9 +367,10 @@ export const useDagStore = defineStore(
       updateRelation,
       deleteRelation,
       syncFromDsl,
-      saveLandscapeDsl,
       setLandscapeMode,
       setLandscapeUseElk,
+      setLandscapeAutoSync,
+      replaceManualRelations,
       saveFlowSteps,
       updateFlowsView,
       addFlow,

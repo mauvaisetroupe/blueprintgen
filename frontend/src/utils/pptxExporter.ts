@@ -2,7 +2,7 @@ import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
-import { buildSequenceDsl, buildActivityDsl, collectAllFlowRelations } from './sequenceDslGenerator'
+import { buildSequenceDsl, buildActivityDsl } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
 import { extractSequenceStepPositions, extractActivityStepPositions, addNumberOverlays } from './pptxSequenceOverlay'
 
@@ -167,24 +167,7 @@ function addTitleBar(slide: PptxGenJS.Slide, title: string) {
 }
 
 function resolveLandscapeDsl(dag: Dag): string {
-  const mode   = dag.landscape.mode   ?? 'guided'
-  const useElk = dag.landscape.useElk ?? false
-
-  if (mode === 'manual' && dag.landscape.mermaidDsl?.trim()) {
-    // Stored DSL may be body-only or full DSL — ensure it has a header
-    const stored = dag.landscape.mermaidDsl.trim()
-    if (stored.startsWith('---') || /^(?:flowchart|graph)\s/m.test(stored)) {
-      return stored
-    }
-    return `---\nconfig:\n    theme: neutral\n---\n\nflowchart TB\n${stored}`
-  }
-
-  if (mode === 'autosync') {
-    return generateLandscapeDsl(dag, { useElk }, collectAllFlowRelations(dag))
-  }
-
-  // guided (default)
-  return generateLandscapeDsl(dag, { useElk })
+  return generateLandscapeDsl(dag)
 }
 
 async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {

@@ -9,6 +9,7 @@ const props = defineProps<{
   completionNames?: string[]
   validationStatus?: 'idle' | 'validating' | 'syntax-error' | 'warnings' | 'valid'
   readOnlyHeader?: string
+  readOnlyFooter?: string
 }>()
 
 const emit = defineEmits<{
@@ -73,6 +74,7 @@ const extensions = [
       class="dsl-body"
       @update:model-value="emit('update:modelValue', $event)"
     />
+    <pre v-if="readOnlyFooter" class="dsl-footer">{{ readOnlyFooter }}</pre>
   </div>
 </template>
 
@@ -107,6 +109,22 @@ const extensions = [
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Read-only footer block (auto-sync relations) */
+.dsl-footer {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--p-text-muted-color);
+  background: var(--p-surface-100, #f4f4f5);
+  border-top: 1px dashed var(--p-content-border-color);
+  white-space: pre;
+  overflow-x: auto;
+  flex-shrink: 0;
+  user-select: none;
 }
 
 .dsl-editor :deep(.vue-codemirror) {

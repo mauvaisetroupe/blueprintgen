@@ -2,8 +2,15 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateLandscapeDsl, toNodeId } from '@/utils/landscapeDslGenerator'
-import { collectAllFlowRelations } from '@/utils/sequenceDslGenerator'
+import {
+  generateLandscapeDsl,
+  generateLandscapeHeader,
+  generateComponentsBody,
+  generateManualRelationsBody,
+  generateAutoSyncRelationsBody,
+  parseRelationsBody,
+  toNodeId,
+} from '@/utils/landscapeDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import { exportToDrawio } from '@/utils/drawioExporter'
@@ -23,133 +30,93 @@ const store = useDagStore()
 
 const dag = computed(() => store.getDag(route.params.id as string))
 
-// Layout options — persisté dans le store pour que le PPTX utilise le même layout
+// ── ELK toggle ────────────────────────────────────────────────────────────────
 const useElk = ref(dag.value?.landscape.useElk ?? false)
 watch(useElk, (val) => {
   if (dag.value) store.setLandscapeUseElk(dag.value.id, val)
 })
 
-// Read-only header: frontmatter + flowchart directive (depends on ELK toggle)
-const landscapeHeader = computed(() => {
-  const lines = ['---', 'config:', '    theme: neutral']
-  if (useElk.value) lines.push('    layout: elk')
-  lines.push('---', '', 'flowchart TB')
-  return lines.join('\n')
+// ── Auto-sync toggle ──────────────────────────────────────────────────────────
+const autoSync = ref(dag.value?.landscape.autoSync ?? false)
+watch(autoSync, (val) => {
+  if (dag.value) store.setLandscapeAutoSync(dag.value.id, val)
 })
 
-// Generated DSL (guided mode — full DSL including header)
-const generatedDsl = computed(() => {
-  if (!dag.value) return ''
-  return generateLandscapeDsl(dag.value, { useElk: useElk.value })
-})
-
-// Strips the header (frontmatter + flowchart directive) from a full DSL, returning the body only
-function extractBody(fullDsl: string): string {
-  const match = fullDsl.match(/(?:flowchart|graph)\s+\w+\r?\n?([\s\S]*)$/)
-  return match?.[1] ?? fullDsl
-}
-
-// Editor mode — persisted in store
-const editMode = ref<'guided' | 'manual' | 'autosync'>(dag.value?.landscape.mode ?? 'guided')
+// ── Mode : guided | manual ────────────────────────────────────────────────────
+const editMode = ref<'guided' | 'manual'>(
+  dag.value?.landscape.mode === 'manual' ? 'manual' : 'guided',
+)
 const modeOptions = [
-  { label: 'Guided',    value: 'guided' },
-  { label: 'Edit DSL',  value: 'manual' },
-  { label: 'Auto-sync', value: 'autosync' },
+  { label: 'Guided',   value: 'guided' },
+  { label: 'Edit DSL', value: 'manual' },
 ]
 
-// Only the editable body — header is shown read-only above the editor
-// Initialized from store on mount so navigation away/back preserves the content
-function loadStoredBody(): string {
-  const stored = dag.value?.landscape.mermaidDsl
-  // Sanitize Vue devtools sentinel that can appear when undefined is stored
-  if (!stored || stored === '__vue_devtool_undefined__') return ''
-  // Strip header whether stored as full DSL (starts with --- or flowchart/graph)
-  if (stored.startsWith('---') || /^(?:flowchart|graph)\s/m.test(stored)) {
-    return extractBody(stored)
-  }
-  return stored
-}
-const manualDsl = ref(loadStoredBody())
+// ── DSL editor state (manuel uniquement) ─────────────────────────────────────
 
-// Full DSL passed to MermaidDiagram and validation in manual mode
-const fullManualDsl = computed(() => landscapeHeader.value + '\n' + manualDsl.value)
+// Contenu de la zone éditable : uniquement les flèches manuelles
+const localRelationsBody = ref('')
 
-// Auto-sync DSL: relations des séquences + relations manuelles (source:'manual') de dag.relations
-// → l'architecte peut ajouter des flèches manuellement sans perdre la vue autosync
-const autoSyncDsl = computed(() => {
+// Header read-only = frontmatter + flowchart TB + components/subgraphs
+const dslReadOnlyHeader = computed(() => {
   if (!dag.value) return ''
-  const flowRelations = collectAllFlowRelations(dag.value)
-  // Dédoublonnage : les relations manuelles déjà présentes dans les séquences ne sont pas ajoutées deux fois
-  const flowKey  = (r: { fromComponentId: string; toComponentId: string }) =>
-    `${r.fromComponentId}→${r.toComponentId}`
-  const flowKeys = new Set(flowRelations.map(flowKey))
-  const manualOnly = dag.value.relations.filter(
-    (r) => r.source === 'manual' && !flowKeys.has(flowKey(r)),
-  )
-  return generateLandscapeDsl(dag.value, { useElk: useElk.value }, [...flowRelations, ...manualOnly])
+  return generateLandscapeHeader(dag.value) + '\n' + generateComponentsBody(dag.value)
 })
 
-const activeDsl = computed(() => {
-  if (editMode.value === 'manual')   return fullManualDsl.value
-  if (editMode.value === 'autosync') return autoSyncDsl.value
-  return generatedDsl.value
+// Footer read-only = relations auto-sync (si toggle activé)
+const dslReadOnlyFooter = computed(() => {
+  if (!dag.value || !autoSync.value) return ''
+  const body = generateAutoSyncRelationsBody(dag.value)
+  return body || ''
 })
 
 function switchToManual() {
-  const stored = dag.value?.landscape.mermaidDsl
-  const hasValidStored = !!stored && stored !== '__vue_devtool_undefined__'
-  manualDsl.value = hasValidStored
-    ? loadStoredBody()
-    : extractBody(activeDsl.value)   // initialise depuis le DSL actif (guided ou autosync)
+  if (!dag.value) return
+  localRelationsBody.value = generateManualRelationsBody(dag.value)
   editMode.value = 'manual'
-  if (dag.value) {
-    store.setLandscapeMode(dag.value.id, 'manual')
-    store.saveLandscapeDsl(dag.value.id, manualDsl.value)  // persiste immédiatement (évite mermaidDsl=undefined)
-  }
-  runValidation(fullManualDsl.value)
+  store.setLandscapeMode(dag.value.id, 'manual')
+  runValidation()
 }
 
-function resetToGuided() {
+function switchToGuided() {
   editMode.value = 'guided'
   syntaxError.value = null
   functionalResult.value = null
-  if (dag.value) {
-    store.setLandscapeMode(dag.value.id, 'guided')
-    store.saveLandscapeDsl(dag.value.id, undefined)
-  }
-}
-
-function switchToAutoSync() {
-  editMode.value = 'autosync'
-  syntaxError.value = null
-  functionalResult.value = null
-  if (dag.value) store.setLandscapeMode(dag.value.id, 'autosync')
+  if (dag.value) store.setLandscapeMode(dag.value.id, 'guided')
 }
 
 watch(editMode, (mode) => {
-  if (mode === 'manual') manualDsl.value = loadStoredBody()
+  if (mode === 'manual' && dag.value) {
+    localRelationsBody.value = generateManualRelationsBody(dag.value)
+  }
 })
 
-// Subgraph toggles
-function toggleSubgraph(categoryId: string, value: boolean) {
-  if (!dag.value) return
-  store.updateCategory(dag.value.id, categoryId, { showSubgraph: value })
-}
+// ── DSL complet pour le rendu Mermaid ─────────────────────────────────────────
+// En mode manuel : construit depuis les parties locales pour prévisualisation instantanée
+// En mode guidé  : généré depuis le modèle (dag.relations + autoSync)
+const activeDsl = computed(() => {
+  if (!dag.value) return ''
+  if (editMode.value === 'manual') {
+    const parts = [dslReadOnlyHeader.value]
+    if (localRelationsBody.value.trim()) parts.push(localRelationsBody.value)
+    if (dslReadOnlyFooter.value.trim())  parts.push(dslReadOnlyFooter.value)
+    return parts.join('\n')
+  }
+  return generateLandscapeDsl(dag.value)
+})
 
-// --- Validation ---
-const syntaxError     = ref<string | null>(null)
-const isValidating    = ref(false)
+// ── Validation (mode manuel) ──────────────────────────────────────────────────
+const syntaxError      = ref<string | null>(null)
+const isValidating     = ref(false)
 const functionalResult = ref<DslValidationResult | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-async function runValidation(code: string) {
-  if (!code.trim()) {
-    syntaxError.value = null
-    functionalResult.value = null
-    return
-  }
+async function runValidation() {
+  if (editMode.value !== 'manual' || !dag.value) return
+  const code = activeDsl.value
+  if (!code.trim()) { syntaxError.value = null; functionalResult.value = null; return }
+
   isValidating.value = true
-  syntaxError.value = null
+  syntaxError.value  = null
   functionalResult.value = null
 
   try {
@@ -161,32 +128,44 @@ async function runValidation(code: string) {
     return
   }
 
-  if (dag.value) functionalResult.value = validateDslAgainstModel(code, dag.value)
+  functionalResult.value = validateDslAgainstModel(code, dag.value)
   isValidating.value = false
 }
 
-function onDslInput() {
-  store.saveLandscapeDsl(dag.value!.id, manualDsl.value)
+function onRelationsChange(value: string) {
+  localRelationsBody.value = value
   if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => runValidation(fullManualDsl.value), 400)
-}
-
-function syncModel() {
-  if (!dag.value || !functionalResult.value) return
-  store.syncFromDsl(dag.value.id, functionalResult.value.parsed)
-  runValidation(fullManualDsl.value)
+  debounceTimer = setTimeout(() => {
+    if (!dag.value) return
+    const parsed = parseRelationsBody(value, dag.value)
+    store.replaceManualRelations(dag.value.id, parsed)
+    runValidation()
+  }, 400)
 }
 
 const hasWarnings = computed(() => (functionalResult.value?.issues.length ?? 0) > 0)
 
-// Node IDs for DSL autocompletion
+const validationStatus = computed(() => {
+  if (isValidating.value)               return 'validating'
+  if (syntaxError.value)                return 'syntax-error'
+  if (functionalResult.value === null)  return 'idle'
+  if (hasWarnings.value)                return 'warnings'
+  return 'valid'
+})
+
+// Node IDs pour l'autocomplétion dans l'éditeur DSL
 const completionNames = computed(() =>
   (dag.value?.components ?? [])
     .filter((c) => c.name.trim() !== '')
     .map((c) => toNodeId(c.name)),
 )
 
-// IDs of categories that have at least one named component (drives v-if + v-show)
+// ── Subgraph toggles (guided + DSL) ──────────────────────────────────────────
+function toggleSubgraph(categoryId: string, value: boolean) {
+  if (!dag.value) return
+  store.updateCategory(dag.value.id, categoryId, { showSubgraph: value })
+}
+
 const categoryIdsWithComponents = computed(() =>
   new Set(
     (dag.value?.components ?? [])
@@ -195,43 +174,22 @@ const categoryIdsWithComponents = computed(() =>
   ),
 )
 
-const validationStatus = computed(() => {
-  if (isValidating.value)          return 'validating'
-  if (syntaxError.value)           return 'syntax-error'
-  if (functionalResult.value === null) return 'idle'
-  if (hasWarnings.value)           return 'warnings'
-  return 'valid'
-})
-
-// ─── Export ──────────────────────────────────────────────────────────────────
-
+// ── Export ────────────────────────────────────────────────────────────────────
 const exportMenu = ref<InstanceType<typeof Menu>>()
 const exportMenuItems = ref([
   {
     label: 'SVG',
     items: [
-      {
-        label: 'SVG — raw (browser rendering)',
-        icon: 'pi pi-image',
-        command: () => exportSvg(false),
-      },
-      {
-        label: 'SVG — pptx-ready (text labels + inlined styles)',
-        icon: 'pi pi-file-export',
-        command: () => exportSvg(true),
-      },
+      { label: 'SVG — raw (browser rendering)',                  icon: 'pi pi-image',        command: () => exportSvg(false) },
+      { label: 'SVG — pptx-ready (text labels + inlined styles)', icon: 'pi pi-file-export',  command: () => exportSvg(true)  },
     ],
   },
   {
     label: 'Mermaid',
     items: [
-      { label: 'Export DSL (.mmd)', icon: 'pi pi-code', command: () => exportMermaid() },
-      { label: 'Copy to clipboard', icon: 'pi pi-copy', command: () => copyMermaid() },
-      {
-        label: 'draw.io tip: Extras › Edit Diagram › paste',
-        icon: 'pi pi-info-circle',
-        disabled: true,
-      },
+      { label: 'Export DSL (.mmd)', icon: 'pi pi-code',         command: () => exportMermaid() },
+      { label: 'Copy to clipboard', icon: 'pi pi-copy',         command: () => copyMermaid()   },
+      { label: 'draw.io tip: Extras › Edit Diagram › paste', icon: 'pi pi-info-circle', disabled: true },
     ],
   },
   {
@@ -284,12 +242,17 @@ async function copyMermaid() {
         :options="modeOptions"
         option-label="label"
         option-value="value"
-        @change="editMode === 'manual' ? switchToManual() : editMode === 'autosync' ? switchToAutoSync() : resetToGuided()"
+        @change="editMode === 'manual' ? switchToManual() : switchToGuided()"
       />
 
       <div class="elk-toggle">
         <ToggleSwitch v-model="useElk" input-id="elk-switch" />
-        <label for="elk-switch">ELK layout</label>
+        <label for="elk-switch">ELK</label>
+      </div>
+
+      <div class="elk-toggle">
+        <ToggleSwitch v-model="autoSync" input-id="autosync-switch" />
+        <label for="autosync-switch">Auto-sync flows</label>
       </div>
 
       <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
@@ -309,7 +272,22 @@ async function copyMermaid() {
         </label>
       </div>
 
-      <!-- Export -->
+      <!-- Validation status (mode manuel) -->
+      <div v-if="editMode === 'manual'" class="validation-status">
+        <span v-if="validationStatus === 'validating'" class="status validating">
+          <i class="pi pi-spin pi-spinner" /> Validating…
+        </span>
+        <span v-else-if="validationStatus === 'syntax-error'" class="status error">
+          <i class="pi pi-times-circle" /> Syntax error
+        </span>
+        <span v-else-if="validationStatus === 'warnings'" class="status warning">
+          <i class="pi pi-exclamation-triangle" /> {{ functionalResult!.issues.length }} warning(s)
+        </span>
+        <span v-else-if="validationStatus === 'valid'" class="status valid">
+          <i class="pi pi-check-circle" /> Valid
+        </span>
+      </div>
+
       <div class="toolbar-spacer" />
       <Button
         label="Export"
@@ -319,50 +297,10 @@ async function copyMermaid() {
         @click="exportMenu?.toggle($event)"
       />
       <Menu ref="exportMenu" :model="exportMenuItems" popup />
-
-      <!-- Manual mode actions in toolbar -->
-      <template v-if="editMode === 'manual'" class="manual-actions">
-        <div class="validation-status">
-          <span v-if="validationStatus === 'validating'" class="status validating">
-            <i class="pi pi-spin pi-spinner" /> Validating…
-          </span>
-          <span v-else-if="validationStatus === 'syntax-error'" class="status error">
-            <i class="pi pi-times-circle" /> Syntax error
-          </span>
-          <span v-else-if="validationStatus === 'warnings'" class="status warning">
-            <i class="pi pi-exclamation-triangle" /> {{ functionalResult!.issues.length }} warning(s)
-          </span>
-          <span v-else-if="validationStatus === 'valid'" class="status valid">
-            <i class="pi pi-check-circle" /> Valid
-          </span>
-        </div>
-
-        <Button
-          v-if="hasWarnings"
-          label="Sync model"
-          icon="pi pi-sync"
-          size="small"
-          severity="warn"
-          @click="syncModel"
-        />
-        <Button
-          label="Reset to guided"
-          icon="pi pi-refresh"
-          size="small"
-          severity="secondary"
-          text
-          @click="resetToGuided"
-        />
-      </template>
     </div>
 
-    <!-- Auto-sync mode: diagram only (read-only) -->
-    <div v-if="editMode === 'autosync'" class="diagram-panel autosync-panel">
-      <MermaidDiagram :code="activeDsl" />
-    </div>
-
-    <!-- Guided mode: relations panel | diagram -->
-    <Splitter v-else-if="editMode === 'guided'" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
+    <!-- Guided mode : RelationSpreadsheet | Diagram -->
+    <Splitter v-if="editMode === 'guided'" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
       <SplitterPanel :size="35" :min-size="20" class="guided-panel">
         <RelationSpreadsheet :dag="dag" />
       </SplitterPanel>
@@ -371,16 +309,17 @@ async function copyMermaid() {
       </SplitterPanel>
     </Splitter>
 
-    <!-- Manual mode: DSL editor | diagram -->
-    <Splitter v-else class="splitter" state-key="landscape-splitter" state-storage="local">
+    <!-- Manual / Edit DSL mode : éditeur relations | Diagram -->
+    <Splitter v-else class="splitter" state-key="landscape-manual-splitter" state-storage="local">
       <SplitterPanel :size="35" :min-size="20" class="editor-panel">
 
         <DslEditor
-          :model-value="manualDsl"
-          :read-only-header="landscapeHeader"
+          :model-value="localRelationsBody"
+          :read-only-header="dslReadOnlyHeader"
+          :read-only-footer="dslReadOnlyFooter || undefined"
           :completion-names="completionNames"
           :validation-status="validationStatus"
-          @update:model-value="(v) => { manualDsl = v; onDslInput() }"
+          @update:model-value="onRelationsChange"
         />
 
         <!-- Syntax error -->
@@ -417,7 +356,6 @@ async function copyMermaid() {
   gap: 0;
 }
 
-/* Toolbar */
 .toolbar {
   display: flex;
   align-items: center;
@@ -452,9 +390,7 @@ async function copyMermaid() {
   cursor: pointer;
 }
 
-/* Validation status in toolbar */
-.validation-status { margin-left: auto; }
-
+.validation-status { display: flex; align-items: center; }
 .toolbar-spacer { flex: 1; }
 
 .status { display: flex; align-items: center; gap: 0.35rem; font-size: 0.875rem; }
@@ -463,28 +399,18 @@ async function copyMermaid() {
 .status.error      { color: #dc2626; }
 .status.warning    { color: #d97706; }
 
-/* Generated mode */
-.diagram-only {
-  flex: 1;
-  overflow: auto;
-  padding: 1rem;
-}
-
-/* Splitter */
 .splitter {
   flex: 1;
   min-height: 0;
   border: none !important;
 }
 
-/* Guided panel */
 .guided-panel {
   overflow: hidden;
   padding: 0 !important;
   border-right: 1px solid var(--p-content-border-color);
 }
 
-/* Editor panel */
 .editor-panel {
   display: flex;
   flex-direction: column;
@@ -493,8 +419,6 @@ async function copyMermaid() {
   padding: 0 !important;
 }
 
-
-/* Diagram panel */
 .diagram-panel {
   overflow: auto;
   padding: 1rem !important;
@@ -503,14 +427,6 @@ async function copyMermaid() {
   justify-content: center;
 }
 
-.autosync-panel {
-  flex: 1;
-  min-height: 0;
-  padding: 1rem;
-  overflow: auto;
-}
-
-/* Issue lists */
 .issue-list {
   display: flex;
   flex-direction: column;
@@ -526,9 +442,5 @@ async function copyMermaid() {
 .error-list   { background: #fef2f2; border-top: 1px solid #fca5a5; color: #dc2626; }
 .warning-list { background: #fffbeb; border-top: 1px solid #fcd34d; color: #92400e; }
 
-.issue-item {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-}
+.issue-item { display: flex; gap: 0.5rem; align-items: flex-start; }
 </style>

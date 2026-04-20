@@ -16,12 +16,12 @@ export interface Component {
 
 // --- Landscape section ---
 
-export type LandscapeMode = 'guided' | 'manual' | 'autosync'
+export type LandscapeMode = 'guided' | 'manual'
 
 export interface Landscape {
-  mermaidDsl?: string // manually edited DSL overrides generated one
   mode?: LandscapeMode
   useElk?: boolean
+  autoSync?: boolean  // inclure les relations des flows dans le landscape
 }
 
 // --- Technical landscape section ---

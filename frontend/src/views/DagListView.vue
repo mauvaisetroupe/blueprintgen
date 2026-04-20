@@ -98,11 +98,6 @@ function executeImport() {
     store.syncFromDsl(dag.id, parsed)
   }
 
-  // Save the landscape DSL body so the landscape view can display it
-  if (landscapeBody) {
-    store.saveLandscapeDsl(dag.id, landscapeBody)
-  }
-
   // Create application flows
   for (const flow of flows) {
     store.addFlow(dag.id, flow.name, '', flow.mermaidDsl)

@@ -21,7 +21,7 @@ import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl, toNodeId } from './landscapeDslGenerator'
 import { injectHtmlLabelsFalse } from './svgInliner'
-import { collectAllFlowRelations, buildActivityDsl } from './sequenceDslGenerator'
+import { buildActivityDsl } from './sequenceDslGenerator'
 
 const CIRCLED_DIGITS = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
                         '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
@@ -293,18 +293,7 @@ function buildDrawioXml(
   }
 
   // ── Relations (edges) ────────────────────────────────────────────────────
-  // Source de vérité selon le mode :
-  //   guided / manual → dag.relations
-  //   autosync        → collectAllFlowRelations (relations calculées depuis les flows)
-  const mode = dag.landscape.mode ?? 'guided'
-  const relations = mode === 'autosync'
-    ? collectAllFlowRelations(dag).map((r, i) => ({
-        id: `auto_${i}`,
-        fromComponentId: r.fromComponentId,
-        toComponentId:   r.toComponentId,
-        label:           undefined as string | undefined,
-      }))
-    : dag.relations
+  const relations = dag.relations
 
   const connectionPoints = computeConnectionPoints(relations, nodeBounds, dag)
 
@@ -338,25 +327,12 @@ function buildDrawioXml(
 
 /**
  * Résout le DSL landscape sans ELK (Dagre standard) pour l'extraction SVG.
- * Respecte le mode (guided/autosync/manual) mais force Dagre pour la stabilité
- * des coordonnées → mxGeometry.
+ * Force Dagre pour la stabilité des coordonnées → mxGeometry.
  */
 function resolveDslForDrawio(dag: Dag): string {
-  const mode = dag.landscape.mode ?? 'guided'
-
-  if (mode === 'manual' && dag.landscape.mermaidDsl?.trim()) {
-    // On garde le DSL manuel mais on supprime la ligne ELK si présente
-    return dag.landscape.mermaidDsl
-      .split('\n')
-      .filter((l) => !l.trim().startsWith('layout:') || !l.includes('elk'))
-      .join('\n')
-  }
-
-  if (mode === 'autosync') {
-    return generateLandscapeDsl(dag, { useElk: false }, collectAllFlowRelations(dag))
-  }
-
-  return generateLandscapeDsl(dag, { useElk: false })
+  // generateLandscapeDsl lit dag.landscape.useElk, on crée un dag virtuel avec useElk: false
+  const dagForDrawio = { ...dag, landscape: { ...dag.landscape, useElk: false } }
+  return generateLandscapeDsl(dagForDrawio)
 }
 
 // ─── Points d'entrée publics ──────────────────────────────────────────────────

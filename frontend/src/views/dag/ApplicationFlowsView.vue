@@ -159,20 +159,12 @@ const unknownParticipants = computed(() => {
   return findUnknownParticipants(editorDsl.value, dag.value)
 })
 
-const landscapeAutoSync = computed(() => dag.value?.landscape.mode === 'autosync')
+const landscapeAutoSync = computed(() => dag.value?.landscape.autoSync === true)
 
 function addToLandscape() {
   if (!dag.value) return
   for (const rel of missingRelations.value) {
     store.addRelation(dag.value.id, rel.fromCompId, rel.toCompId)
-  }
-  // In manual mode, also append the arrows to the stored DSL body so the diagram reflects them
-  if (dag.value.landscape.mode === 'manual') {
-    const arrows = missingRelations.value
-      .map(rel => `  ${toParticipantId(rel.fromName)} --> ${toParticipantId(rel.toName)}`)
-      .join('\n')
-    const current = dag.value.landscape.mermaidDsl ?? ''
-    store.saveLandscapeDsl(dag.value.id, current + '\n' + arrows)
   }
 }
 

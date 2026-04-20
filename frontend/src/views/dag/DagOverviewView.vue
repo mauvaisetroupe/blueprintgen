@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateLandscapeDsl } from '@/utils/landscapeDslGenerator'
+import { generateComponentsBody } from '@/utils/landscapeDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import CategorySpreadsheet from '@/components/dag/CategorySpreadsheet.vue'
 import DslEditor from '@/components/DslEditor.vue'
@@ -69,9 +69,7 @@ const dslHeader = 'flowchart TB'
 // Body generated from the model (nodes + subgraphs, no relations)
 const generatedBody = computed(() => {
   if (!dag.value) return ''
-  const full = generateLandscapeDsl(dag.value, { useElk: false }, [])
-  const match = full.match(/(?:flowchart|graph)\s+\w+\r?\n?([\s\S]*)$/)
-  return match?.[1] ?? ''
+  return generateComponentsBody(dag.value)
 })
 
 function loadDslBody(): string {
