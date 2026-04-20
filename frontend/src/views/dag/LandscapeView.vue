@@ -54,7 +54,10 @@ const modeOptions = [
 // ── DSL editor state (manuel uniquement) ─────────────────────────────────────
 
 // Contenu de la zone éditable : uniquement les flèches manuelles
-const localRelationsBody = ref('')
+// Initialisé depuis dag.relations si on démarre directement en mode manuel (navigation retour)
+const localRelationsBody = ref(
+  dag.value?.landscape.mode === 'manual' ? generateManualRelationsBody(dag.value) : '',
+)
 
 // Header read-only = frontmatter + flowchart TB + components/subgraphs
 const dslReadOnlyHeader = computed(() => {
@@ -71,7 +74,6 @@ const dslReadOnlyFooter = computed(() => {
 
 function switchToManual() {
   if (!dag.value) return
-  localRelationsBody.value = generateManualRelationsBody(dag.value)
   editMode.value = 'manual'
   store.setLandscapeMode(dag.value.id, 'manual')
   runValidation()
@@ -112,15 +114,15 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 async function runValidation() {
   if (editMode.value !== 'manual' || !dag.value) return
-  const code = activeDsl.value
-  if (!code.trim()) { syntaxError.value = null; functionalResult.value = null; return }
+  const fullCode = activeDsl.value
+  if (!fullCode.trim()) { syntaxError.value = null; functionalResult.value = null; return }
 
   isValidating.value = true
   syntaxError.value  = null
   functionalResult.value = null
 
   try {
-    await mermaid.parse(code)
+    await mermaid.parse(fullCode)
   } catch (e) {
     const raw = e instanceof Error ? e.message : 'Invalid syntax'
     syntaxError.value = raw.replace(/^Syntax error in text\s*\nmermaid version [\d.]+\s*\n?/i, '').trim() || 'Invalid syntax'
@@ -128,7 +130,10 @@ async function runValidation() {
     return
   }
 
-  functionalResult.value = validateDslAgainstModel(code, dag.value)
+  // Validate only the editable part (header + manual relations), never the autosync footer
+  // so autosync relations don't trigger spurious "new relation" warnings
+  const editableCode = [dslReadOnlyHeader.value, localRelationsBody.value].join('\n')
+  functionalResult.value = validateDslAgainstModel(editableCode, dag.value)
   isValidating.value = false
 }
 
