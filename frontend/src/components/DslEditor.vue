@@ -221,6 +221,7 @@ watch(() => props.readOnlyHeader, (newHeader) => {
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 0.85rem;
   background: var(--p-surface-50, #fafafa);
+  font-variant-ligatures: none;
 }
 
 .dsl-editor :deep(.cm-editor.cm-focused) {
