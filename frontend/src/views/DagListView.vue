@@ -133,7 +133,7 @@ function executeImport() {
         v-for="dag in store.dags"
         :key="dag.id"
         class="dag-card"
-        @click="router.push(`/dag/${dag.id}`)"
+        @click="router.push(`/dag/${dag.id}/components`)"
       >
         <template #title>
           <div class="card-title-row">

@@ -56,7 +56,7 @@ function submitAddCategory() {
 }
 
 // --- DSL mode — injecté depuis DagDetailLayout ---
-const editMode = inject<Ref<'guided' | 'manual'>>('editMode')!
+const dslEdit = inject<Ref<boolean>>('dslEdit')!
 
 // Read-only header shown above the DSL editor
 const dslHeader = 'flowchart TB'
@@ -87,8 +87,8 @@ async function runValidation(code: string) {
   isValidating.value = false
 }
 
-watch(editMode, (mode) => {
-  if (mode === 'manual' && dag.value) {
+watch(dslEdit, (isManual) => {
+  if (isManual && dag.value) {
     dslBody.value = generateComponentsBody(dag.value, false, true)
     syntaxError.value = null
     functionalResult.value = null
@@ -145,7 +145,7 @@ const validationStatus = computed(() => {
         <h3>Categories & Components</h3>
         <div class="section-header-actions">
           <Button
-            v-if="editMode === 'guided' && !addingCategory"
+            v-if="dslEdit && !addingCategory"
             label="Add category"
             icon="pi pi-plus"
             size="small"
@@ -155,7 +155,7 @@ const validationStatus = computed(() => {
       </div>
 
       <!-- Guided mode -->
-      <template v-if="editMode === 'guided'">
+      <template v-if="!dslEdit">
         <div v-if="addingCategory" class="add-category-form">
           <InputText
             v-model="newCategoryName"

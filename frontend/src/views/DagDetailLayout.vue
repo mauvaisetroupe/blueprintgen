@@ -8,35 +8,46 @@ import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import Button from 'primevue/button'
 import SelectButton from 'primevue/selectbutton'
+import ToggleSwitch from 'primevue/toggleswitch'
+import { storeToRefs } from 'pinia'
 
 const route = useRoute()
 const store = useDagStore()
+const { dslEditPreference } = storeToRefs(store)
 
 const dag = computed(() => store.getDag(route.params.id as string))
 
 // ── Edit mode (guided | manual) — partagé entre les onglets via provide/inject ──
 const isFlowsTab = computed(() => route.path.endsWith('/flows'))
+const isComponents = computed(() => route.path.endsWith('/components'))
 
-const editMode = ref<'guided' | 'manual'>(
-  dag.value?.landscape.mode === 'manual' ? 'manual' : 'guided',
-)
+const dslEdit = ref(dslEditPreference.value)
+const lastUserChoice = ref(true);
 
-// Synchronise le store quand le mode change (sauf quand on est sur Flows où c'est forcé)
-watch(editMode, (mode) => {
-  if (dag.value && !isFlowsTab.value) {
-    store.setLandscapeMode(dag.value.id, mode)
+watch([isFlowsTab, isComponents], () => {
+  if (isFlowsTab.value) {
+    dslEdit.value = true // Force le false si on est sur l'onglet Flows
+  }
+  else if (isComponents.value) {
+    dslEdit.value = false // Force le false si on est sur l'onglet components
+  }
+  else {
+    dslEdit.value = dslEditPreference.value
   }
 })
 
-provide('editMode', editMode)
+watch(dslEdit, (newValue) => {
+  // On ne sauvegarde le choix que si l'utilisateur n'est pas 
+  // sur un onglet qui le force (sinon on écrase sa préférence par le forçage)
+  if (!isFlowsTab.value && !isComponents.value) {
+    store.setDslEditPreference(newValue)
+  }
+})
 
-const modeOptions = [
-  { label: 'Guided',   value: 'guided' },
-  { label: 'Edit DSL', value: 'manual' },
-]
+provide('dslEdit', dslEdit)
 
 const tabs = [
-  { label: 'Components',           route: '',           value: '0' },
+  { label: 'Components',           route: 'components', value: '0' },
   { label: 'Landscape',            route: 'landscape',  value: '1' },
   { label: 'Application Flows',    route: 'flows',      value: '2' },
   { label: 'Technical Landscape',  route: 'technical',  value: '3' },
@@ -72,15 +83,17 @@ function saveLocally() {
     <div class="detail-header">
       <h2>{{ dag.name }}</h2>
       <div class="header-actions">
-        <SelectButton
-          :model-value="isFlowsTab ? 'manual' : editMode"
-          :options="modeOptions"
-          option-label="label"
-          option-value="value"
-          :disabled="isFlowsTab"
-          size="small"
-          @update:model-value="editMode = $event"
-        />
+
+        <div class="elk-toggle">
+          <ToggleSwitch
+            v-model="dslEdit"
+            :disabled="isFlowsTab || isComponents"
+            size="small"
+            input-id="dsl-switch"
+          />
+          <label for="dsl-switch">DSL Edit</label>
+        </div>
+
         <Button
           icon="pi pi-save"
           size="small"
@@ -177,5 +190,11 @@ function saveLocally() {
 .not-found {
   padding: 2rem;
   color: var(--p-text-muted-color);
+}
+.elk-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
 }
 </style>

@@ -18,7 +18,7 @@ const router = createRouter({
       component: () => import('@/views/DagDetailLayout.vue'),
       children: [
         {
-          path: '',
+          path: 'components',
           name: 'dag-overview',
           component: () => import('@/views/dag/DagOverviewView.vue'),
         },

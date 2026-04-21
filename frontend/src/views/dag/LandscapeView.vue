@@ -42,14 +42,14 @@ watch(autoSync, (val) => {
 })
 
 // ── Mode : guided | manual — injecté depuis DagDetailLayout ──────────────────
-const editMode = inject<Ref<'guided' | 'manual'>>('editMode')!
+const dslEdit = inject<Ref<boolean>>('dslEdit')!
 
 // ── DSL editor state (manuel uniquement) ─────────────────────────────────────
 
 // Contenu de la zone éditable : uniquement les flèches manuelles
 // Initialisé depuis dag.relations si on démarre directement en mode manuel (navigation retour)
 const localRelationsBody = ref(
-  dag.value?.landscape.mode === 'manual' ? generateManualRelationsBody(dag.value) : '',
+  dag.value ? generateManualRelationsBody(dag.value) : '',
 )
 
 // Header read-only = frontmatter + flowchart TB + components/subgraphs
@@ -81,11 +81,11 @@ const dslReadOnlyFooter = computed(() => {
   return body || ''
 })
 
-watch(editMode, (mode) => {
-  if (mode === 'manual' && dag.value) {
+watch(dslEdit, (mode) => {
+  if (dslEdit && dag.value) {
     localRelationsBody.value = generateManualRelationsBody(dag.value)
     runValidation()
-  } else if (mode === 'guided') {
+  } else if (!dslEdit) {
     syntaxError.value = null
     functionalResult.value = null
   }
@@ -96,7 +96,7 @@ watch(editMode, (mode) => {
 // En mode guidé  : généré depuis le modèle (dag.relations + autoSync)
 const activeDsl = computed(() => {
   if (!dag.value) return ''
-  if (editMode.value === 'manual') {
+  if (dslEdit) {
     const parts = []
     if (dslFrontmatter.value) parts.push(dslFrontmatter.value)
     parts.push(generateComponentsBody(dag.value, false, true))
@@ -114,7 +114,7 @@ const functionalResult = ref<DslValidationResult | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 async function runValidation() {
-  if (editMode.value !== 'manual' || !dag.value) return
+  if (!dslEdit || !dag.value) return
   const fullCode = activeDsl.value
   if (!fullCode.trim()) { syntaxError.value = null; functionalResult.value = null; return }
 
@@ -271,7 +271,7 @@ async function copyMermaid() {
       </div>
 
       <!-- Validation status (mode manuel) -->
-      <div v-if="editMode === 'manual'" class="validation-status">
+      <div v-if="dslEdit" class="validation-status">
         <span v-if="validationStatus === 'validating'" class="status validating">
           <i class="pi pi-spin pi-spinner" /> Validating…
         </span>
@@ -298,7 +298,7 @@ async function copyMermaid() {
     </div>
 
     <!-- Guided mode : RelationSpreadsheet | Diagram -->
-    <Splitter v-if="editMode === 'guided'" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
+    <Splitter v-if="!dslEdit" class="splitter" state-key="landscape-guided-splitter" state-storage="local">
       <SplitterPanel :size="35" :min-size="20" class="guided-panel">
         <RelationSpreadsheet :dag="dag" />
       </SplitterPanel>

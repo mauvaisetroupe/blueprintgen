@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type LandscapeMode, type FlowsViewOptions, type FlowStep, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowsViewOptions, type FlowStep, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -16,6 +16,10 @@ export const useDagStore = defineStore(
   'dag',
   () => {
     const dags = ref<Dag[]>([])
+    const dslEditPreference = ref(true)
+    function setDslEditPreference(value: boolean) {
+      dslEditPreference.value = value
+    }
 
     // --- DAG CRUD ---
 
@@ -60,7 +64,6 @@ export const useDagStore = defineStore(
         createdAt: now(),
         updatedAt: now(),
         landscape: {
-          mode:      data.landscape?.mode,
           useElk:    data.landscape?.useElk,
           autoSync:  data.landscape?.autoSync,
         },
@@ -305,13 +308,6 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
-    function setLandscapeMode(dagId: string, mode: LandscapeMode) {
-      const dag = getDag(dagId)
-      if (!dag) return
-      dag.landscape.mode = mode
-      dag.updatedAt = now()
-    }
-
     function setLandscapeUseElk(dagId: string, useElk: boolean) {
       const dag = getDag(dagId)
       if (!dag) return
@@ -367,7 +363,6 @@ export const useDagStore = defineStore(
       updateRelation,
       deleteRelation,
       syncFromDsl,
-      setLandscapeMode,
       setLandscapeUseElk,
       setLandscapeAutoSync,
       replaceManualRelations,
@@ -376,6 +371,8 @@ export const useDagStore = defineStore(
       addFlow,
       updateFlow,
       deleteFlow,
+      dslEditPreference, 
+      setDslEditPreference,
     }
   },
   {
