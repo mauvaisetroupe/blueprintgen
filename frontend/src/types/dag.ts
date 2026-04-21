@@ -54,6 +54,7 @@ export interface ApplicationFlow {
   description: string
   steps: FlowStep[]
   mermaidDsl?: string
+  viewOptions?: FlowsViewOptions
 }
 
 // --- Relations ---
@@ -95,7 +96,6 @@ export interface Dag {
   landscape: Landscape
   technicalLandscape: TechnicalLandscape
   applicationFlows: ApplicationFlow[]
-  flowsView: FlowsViewOptions
 }
 
 // Default categories based on the reference Mermaid example

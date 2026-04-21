@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowsViewOptions, type FlowStep, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -36,7 +36,6 @@ export const useDagStore = defineStore(
         landscape: {},
         technicalLandscape: { components: [] },
         applicationFlows: [],
-        flowsView: {},
       }
       dags.value.push(dag)
       return dag
@@ -68,9 +67,8 @@ export const useDagStore = defineStore(
           autoSync:  data.landscape?.autoSync,
         },
         // Champs ajoutés dans les versions récentes — migration défensive
-        relations:          data.relations          ?? [],
-        flowsView:          data.flowsView          ?? {},
-        applicationFlows:   data.applicationFlows   ?? [],
+        relations:          data.relations        ?? [],
+        applicationFlows:   data.applicationFlows ?? [],
         categories:         data.categories         ?? [],
         components:         data.components         ?? [],
         technicalLandscape: data.technicalLandscape ?? { components: [] },
@@ -82,8 +80,7 @@ export const useDagStore = defineStore(
     function getDag(id: string): Dag | undefined {
       const dag = dags.value.find((d) => d.id === id)
       // Migrate DAGs created before new fields were added
-      if (dag && !dag.relations)   dag.relations   = []
-      if (dag && !dag.flowsView)  dag.flowsView   = {}
+      if (dag && !dag.relations) dag.relations = []
       return dag
     }
 
@@ -283,7 +280,7 @@ export const useDagStore = defineStore(
       return flow
     }
 
-    function updateFlow(dagId: string, flowId: string, patch: Partial<Pick<import('@/types/dag').ApplicationFlow, 'name' | 'description' | 'mermaidDsl'>>) {
+    function updateFlow(dagId: string, flowId: string, patch: Partial<Pick<import('@/types/dag').ApplicationFlow, 'name' | 'description' | 'mermaidDsl' | 'viewOptions'>>) {
       const dag = getDag(dagId)
       if (!dag) return
       const flow = dag.applicationFlows.find((f) => f.id === flowId)
@@ -339,13 +336,6 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
-    function updateFlowsView(dagId: string, patch: Partial<FlowsViewOptions>) {
-      const dag = getDag(dagId)
-      if (!dag) return
-      Object.assign(dag.flowsView, patch)
-      dag.updatedAt = now()
-    }
-
     return {
       dags,
       createDag,
@@ -367,7 +357,6 @@ export const useDagStore = defineStore(
       setLandscapeAutoSync,
       replaceManualRelations,
       saveFlowSteps,
-      updateFlowsView,
       addFlow,
       updateFlow,
       deleteFlow,

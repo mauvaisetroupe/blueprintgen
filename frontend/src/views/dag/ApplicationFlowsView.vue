@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch, type Ref } from 'vue'
+import { computed, inject, nextTick, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps, toParticipantId, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
@@ -47,13 +47,11 @@ const diagramModeOptions = [
 
 function allCategoryIds() { return new Set(dag.value?.categories.map((c) => c.id) ?? []) }
 
-const fv = dag.value?.flowsView ?? {}
-const diagramMode       = ref<DiagramMode>(fv.diagramMode    ?? 'sequence')
-const useElkActivity    = ref<boolean>    (fv.useElk          ?? true)
-const showReturnArrows  = ref<boolean>    (fv.showReturns     ?? false)
-const activitySubgraphs = ref<Set<string>>(
-  fv.subgraphCategoryIds ? new Set(fv.subgraphCategoryIds) : allCategoryIds(),
-)
+// Options de rendu — par flow, initialisées depuis flow.viewOptions à chaque sélection
+const diagramMode       = ref<DiagramMode>('sequence')
+const useElkActivity    = ref<boolean>(false)
+const showReturnArrows  = ref<boolean>(false)
+const activitySubgraphs = ref<Set<string>>(allCategoryIds())
 
 function toggleActivitySubgraph(categoryId: string, checked: boolean) {
   const next = new Set(activitySubgraphs.value)
@@ -61,16 +59,21 @@ function toggleActivitySubgraph(categoryId: string, checked: boolean) {
   activitySubgraphs.value = next
 }
 
-// Persiste les options dans le store à chaque changement
+// Guard pour éviter de sauvegarder pendant le chargement des options d'un flow
+let loadingFlowOptions = false
+
+// Persiste les options dans le flow courant à chaque changement utilisateur
 watch(
   [diagramMode, useElkActivity, showReturnArrows, activitySubgraphs],
   () => {
-    if (!dag.value) return
-    store.updateFlowsView(dag.value.id, {
-      diagramMode:         diagramMode.value,
-      useElk:              useElkActivity.value,
-      showReturns:         showReturnArrows.value,
-      subgraphCategoryIds: [...activitySubgraphs.value],
+    if (loadingFlowOptions || !dag.value || !selectedFlow.value) return
+    store.updateFlow(dag.value.id, selectedFlow.value.id, {
+      viewOptions: {
+        diagramMode:         diagramMode.value,
+        useElk:              useElkActivity.value,
+        showReturns:         showReturnArrows.value,
+        subgraphCategoryIds: [...activitySubgraphs.value],
+      },
     })
   },
 )
@@ -111,7 +114,17 @@ if (!selectedFlowId.value && dag.value?.applicationFlows.length) {
   selectedFlowId.value = dag.value.applicationFlows[0]?.id ?? null
 }
 
-watch(selectedFlow, (flow) => {
+watch(selectedFlow, async (flow) => {
+  // Charge les options de rendu propres à ce flow (avec defaults)
+  loadingFlowOptions = true
+  const vo = flow?.viewOptions ?? {}
+  diagramMode.value       = vo.diagramMode ?? 'sequence'
+  useElkActivity.value    = vo.useElk      ?? false
+  showReturnArrows.value  = vo.showReturns ?? false
+  activitySubgraphs.value = vo.subgraphCategoryIds ? new Set(vo.subgraphCategoryIds) : allCategoryIds()
+  await nextTick()
+  loadingFlowOptions = false
+
   editorDsl.value = flow?.mermaidDsl ?? ''
   syntaxError.value = null
   if (!flow || !dag.value) return
