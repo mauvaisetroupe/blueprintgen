@@ -6,9 +6,12 @@ import { generateComponentsBody } from '@/utils/landscapeDslGenerator'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import CategorySpreadsheet from '@/components/dag/CategorySpreadsheet.vue'
 import DslEditor from '@/components/DslEditor.vue'
+import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
+import Splitter from 'primevue/splitter'
+import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 
 const route = useRoute()
@@ -117,11 +120,20 @@ const validationStatus = computed(() => {
   if (hasWarnings.value)                return 'warnings'
   return 'valid'
 })
+
+// Diagramme des composants : tous les subgraphs forcés, aucune relation
+const componentsDsl = computed(() => {
+  if (!dag.value) return ''
+  const header = ['---', 'config:', '    theme: neutral', '---', '', 'flowchart TB'].join('\n')
+  const body = generateComponentsBody(dag.value, true, true)
+  return body ? header + '\n' + body : ''
+})
 </script>
 
 <template>
-  <div v-if="dag">
-    <!-- DAG description header -->
+  <div v-if="dag" class="components">
+
+    <!-- Description header (toujours visible) -->
     <div class="dag-info">
       <template v-if="editingDag">
         <div class="edit-form">
@@ -139,49 +151,51 @@ const validationStatus = computed(() => {
       </template>
     </div>
 
-    <!-- Categories section -->
-    <div class="categories-section">
+    <!-- Guided mode : spreadsheet | diagramme -->
+    <Splitter v-if="!dslEdit" class="comp-splitter" state-key="components-splitter" state-storage="local">
+      <SplitterPanel :size="45" :min-size="25" class="categories-panel">
+        <div class="categories-section">
+          <div class="section-header">
+            <h3>Categories & Components</h3>
+          </div>
+
+          <div v-if="addingCategory" class="add-category-form">
+            <InputText
+              v-model="newCategoryName"
+              placeholder="Category name"
+              autofocus
+              @keyup.enter="submitAddCategory"
+              @keyup.escape="addingCategory = false"
+            />
+            <Button icon="pi pi-check" @click="submitAddCategory" />
+            <Button icon="pi pi-times" severity="secondary" @click="addingCategory = false" />
+          </div>
+
+          <CategorySpreadsheet
+            v-for="category in dag.categories.slice().sort((a, b) => a.order - b.order)"
+            :key="category.id"
+            :dag-id="dag.id"
+            :category="category"
+            :components="componentsByCategory[category.id] ?? []"
+          />
+
+          <p v-if="dag.categories.length === 0" class="empty">No categories yet.</p>
+
+          <Button label="Add category" icon="pi pi-plus" size="small" text class="add-cat-btn" @click="addingCategory = true" />
+        </div>
+      </SplitterPanel>
+
+      <SplitterPanel :size="55" :min-size="30" class="diagram-panel">
+        <MermaidDiagram v-if="componentsDsl" :code="componentsDsl" />
+        <p v-else class="empty-diagram">Add components to see the diagram.</p>
+      </SplitterPanel>
+    </Splitter>
+
+    <!-- DSL mode : éditeur pleine largeur -->
+    <div v-else class="categories-section">
       <div class="section-header">
         <h3>Categories & Components</h3>
         <div class="section-header-actions">
-          <Button
-            v-if="dslEdit && !addingCategory"
-            label="Add category"
-            icon="pi pi-plus"
-            size="small"
-            @click="addingCategory = true"
-          />
-        </div>
-      </div>
-
-      <!-- Guided mode -->
-      <template v-if="!dslEdit">
-        <div v-if="addingCategory" class="add-category-form">
-          <InputText
-            v-model="newCategoryName"
-            placeholder="Category name"
-            autofocus
-            @keyup.enter="submitAddCategory"
-            @keyup.escape="addingCategory = false"
-          />
-          <Button icon="pi pi-check" @click="submitAddCategory" />
-          <Button icon="pi pi-times" severity="secondary" @click="addingCategory = false" />
-        </div>
-
-        <CategorySpreadsheet
-          v-for="category in dag.categories.slice().sort((a, b) => a.order - b.order)"
-          :key="category.id"
-          :dag-id="dag.id"
-          :category="category"
-          :components="componentsByCategory[category.id] ?? []"
-        />
-
-        <p v-if="dag.categories.length === 0" class="empty">No categories yet.</p>
-      </template>
-
-      <!-- DSL mode -->
-      <template v-else>
-        <div class="dsl-toolbar">
           <span v-if="validationStatus === 'validating'" class="status validating">
             <i class="pi pi-spin pi-spinner" /> Validating…
           </span>
@@ -194,7 +208,6 @@ const validationStatus = computed(() => {
           <span v-else-if="validationStatus === 'valid'" class="status valid">
             <i class="pi pi-check-circle" /> Valid
           </span>
-
           <Button
             v-if="hasWarnings && !syntaxError"
             label="Sync model"
@@ -204,36 +217,48 @@ const validationStatus = computed(() => {
             @click="syncModel"
           />
         </div>
+      </div>
 
-        <div class="dsl-editor-wrap">
-          <DslEditor
-            :model-value="dslBody"
-            :read-only-header="dslHeader"
-            :validation-status="validationStatus"
-            @update:model-value="onDslChange"
-          />
-        </div>
+      <div class="dsl-editor-wrap">
+        <DslEditor
+          :model-value="dslBody"
+          :read-only-header="dslHeader"
+          :validation-status="validationStatus"
+          @update:model-value="onDslChange"
+        />
+      </div>
 
-        <div v-if="syntaxError" class="issue-list error-list">
-          <div class="issue-item"><i class="pi pi-times-circle" /><span>{{ syntaxError }}</span></div>
-        </div>
+      <div v-if="syntaxError" class="issue-list error-list">
+        <div class="issue-item"><i class="pi pi-times-circle" /><span>{{ syntaxError }}</span></div>
+      </div>
 
-        <div v-if="hasWarnings" class="issue-list warning-list">
-          <div v-for="(issue, i) in functionalResult!.issues" :key="i" class="issue-item">
-            <i class="pi pi-exclamation-triangle" /><span>{{ issue.message }}</span>
-          </div>
+      <div v-if="hasWarnings" class="issue-list warning-list">
+        <div v-for="(issue, i) in functionalResult!.issues" :key="i" class="issue-item">
+          <i class="pi pi-exclamation-triangle" /><span>{{ issue.message }}</span>
         </div>
-      </template>
+      </div>
     </div>
+
   </div>
 </template>
 
 <style scoped>
+.components {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .dag-info {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
+  padding: 1rem 1.5rem;
   display: flex;
   align-items: flex-start;
   gap: 1rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--p-content-border-color);
 }
 
 .dag-desc {
@@ -254,11 +279,41 @@ const validationStatus = computed(() => {
 
 .edit-actions { display: flex; gap: 0.5rem; }
 
+/* Splitter guidé */
+.comp-splitter {
+  flex: 1;
+  min-height: 0;
+  border: none !important;
+}
+
+.categories-panel {
+  overflow-y: auto;
+  padding: 0 !important;
+  border-right: 1px solid var(--p-content-border-color);
+}
+
+.diagram-panel {
+  overflow: auto;
+  padding: 1rem !important;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.empty-diagram {
+  color: var(--p-text-muted-color);
+  font-style: italic;
+  font-size: 0.875rem;
+}
+
 .categories-section {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  padding: 1rem 1.5rem;
 }
+
+.add-cat-btn { align-self: flex-start; }
 
 .section-header {
   display: flex;

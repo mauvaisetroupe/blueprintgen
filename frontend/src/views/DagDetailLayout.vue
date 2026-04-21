@@ -182,7 +182,8 @@ function saveLocally() {
 
 /* Views that manage their own layout get no padding */
 .tab-content:has(> .landscape),
-.tab-content:has(> .flows) {
+.tab-content:has(> .flows),
+.tab-content:has(> .components) {
   padding: 0;
   overflow: hidden;
 }
