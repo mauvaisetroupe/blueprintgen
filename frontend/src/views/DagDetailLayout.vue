@@ -18,7 +18,6 @@ const { dslEditPreference } = storeToRefs(store)
 const dag = computed(() => store.getDag(route.params.id as string))
 
 // ── Edit mode (guided | manual) — partagé entre les onglets via provide/inject ──
-const isFlowsTab = computed(() => route.path.endsWith('/flows'))
 const isComponents = computed(() => route.path.endsWith('/components'))
 
 const dslEdit = ref()
@@ -27,26 +26,20 @@ onMounted(() => {
   setDslEdit()
 })
 
-watch([isFlowsTab, isComponents], () => {
+watch(isComponents, () => {
   setDslEdit()
 })
 
 function setDslEdit() {
-    if (isFlowsTab.value) {
-    dslEdit.value = true // Force le false si on est sur l'onglet Flows
-  }
-  else if (isComponents.value) {
-    dslEdit.value = false // Force le false si on est sur l'onglet components
-  }
-  else {
+  if (isComponents.value) {
+    dslEdit.value = false
+  } else {
     dslEdit.value = dslEditPreference.value
   }
 }
 
 watch(dslEdit, (newValue) => {
-  // On ne sauvegarde le choix que si l'utilisateur n'est pas 
-  // sur un onglet qui le force (sinon on écrase sa préférence par le forçage)
-  if (!isFlowsTab.value && !isComponents.value) {
+  if (!isComponents.value) {
     store.setDslEditPreference(newValue)
   }
 })
@@ -94,7 +87,7 @@ function saveLocally() {
         <div class="elk-toggle">
           <ToggleSwitch
             v-model="dslEdit"
-            :disabled="isFlowsTab || isComponents"
+            :disabled="isComponents"
             size="small"
             input-id="dsl-switch"
           />

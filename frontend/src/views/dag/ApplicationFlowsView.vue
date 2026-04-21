@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, toParticipantId, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps, toParticipantId, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
+import FlowStepSpreadsheet from '@/components/dag/FlowStepSpreadsheet.vue'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import SelectButton from 'primevue/selectbutton'
@@ -14,12 +15,14 @@ import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import { exportFlowToDrawio } from '@/utils/drawioExporter'
-import { generateComponentsBody, toNodeId } from '@/utils/landscapeDslGenerator'
 
 const route = useRoute()
 const store = useDagStore()
 
 const dag = computed(() => store.getDag(route.params.id as string))
+
+// ── Mode guided / DSL — injecté depuis DagDetailLayout ───────────────────────
+const dslEdit = inject<Ref<boolean>>('dslEdit')!
 
 // Selected flow
 const selectedFlowId = ref<string | null>(null)
@@ -72,12 +75,19 @@ watch(
   },
 )
 
+// Corps DSL courant selon le mode : depuis l'éditeur (DSL) ou depuis les steps structurés (guidé)
+const currentBody = computed(() => {
+  if (!dag.value || !selectedFlow.value) return ''
+  if (dslEdit.value) return editorDsl.value
+  return buildSequenceBodyFromSteps(selectedFlow.value.steps, dag.value)
+})
+
 // Catégories qui ont au moins un participant dans le flow courant
 const activeCategoryIds = computed(() => {
-  if (!dag.value || !editorDsl.value.trim()) return new Set<string>()
+  if (!dag.value || !currentBody.value.trim()) return new Set<string>()
   const ANY_ARROW = /^([a-zA-Z_]\w*)\s*(?:->>|-->>|-x|->|-->)\S*\s*([a-zA-Z_]\w*)/
   const ids = new Set<string>()
-  for (const raw of editorDsl.value.split('\n')) {
+  for (const raw of currentBody.value.split('\n')) {
     const m = raw.trim().match(ANY_ARROW)
     if (!m) continue
     for (const pid of [m[1], m[2]]) {
@@ -90,10 +100,10 @@ const activeCategoryIds = computed(() => {
 
 // DSL envoyé à Mermaid selon le mode de visualisation
 const renderedDsl = computed(() => {
-  if (!dag.value || !editorDsl.value.trim()) return ''
+  if (!dag.value || !currentBody.value.trim()) return ''
   if (diagramMode.value === 'activity')
-    return buildActivityDsl(editorDsl.value, dag.value, useElkActivity.value, activitySubgraphs.value, showReturnArrows.value)
-  return buildSequenceDsl(editorDsl.value, dag.value)
+    return buildActivityDsl(currentBody.value, dag.value, useElkActivity.value, activitySubgraphs.value, showReturnArrows.value)
+  return buildSequenceDsl(currentBody.value, dag.value)
 })
 
 // Sélectionne le premier flow au chargement si aucun n'est sélectionné
@@ -158,7 +168,7 @@ const missingRelations = computed(() => {
 })
 
 const unknownParticipants = computed(() => {
-  if (!dag.value || !editorDsl.value.trim()) return []
+  if (!dag.value || !dslEdit.value || !editorDsl.value.trim()) return []
   return findUnknownParticipants(editorDsl.value, dag.value)
 })
 
@@ -286,16 +296,28 @@ async function copyMermaid() {
   await navigator.clipboard.writeText(renderedDsl.value)
 }
 
-const dslReadOnlyHeaderForEditor = computed(() => {
-  if (!dag.value) return ''
-  const lines: string[] = []
-  lines.push(generateComponentsBody(dag.value, true, false))
-  const example = (dag.value.components[0]?.name && dag.value.components[1]?.name)
-    ? `${toNodeId(dag.value.components[0].name)} --> ${toNodeId(dag.value.components[1].name)}`
-    : "internet_user --> ordering_service"
+// Watch: when switching to DSL mode, regenerate editorDsl from the structured steps
+watch(dslEdit, (isEdit, wasEdit) => {
+  if (isEdit && !wasEdit && dag.value && selectedFlow.value) {
+    editorDsl.value = buildSequenceBodyFromSteps(selectedFlow.value.steps, dag.value)
+    store.updateFlow(dag.value.id, selectedFlow.value.id, { mermaidDsl: editorDsl.value })
+    runValidation(buildSequenceDsl(editorDsl.value, dag.value))
+  }
+  syntaxError.value = null
+})
 
-  lines.push("  %% Tip: Use AUTOSYNC to import relationships from sequence diagrams.");
-  lines.push(`  %% Add links here (e.g., ${example})`)
+// Header read-only affiché dans l'éditeur DSL : liste des participants disponibles
+const dslReadOnlyHeaderForEditor = computed(() => {
+  if (!dag.value) return 'sequenceDiagram'
+  const ids = dag.value.components
+    .filter((c) => c.name.trim() !== '')
+    .map((c) => `  %%   ${toParticipantId(c.name)} (${c.name})`)
+  const lines = ['sequenceDiagram']
+  if (ids.length > 0) {
+    lines.push('  %% Available participants:')
+    lines.push(...ids)
+  }
+  lines.push('  %% Arrows: ->> request  -->> return  -x async')
   return lines.join('\n')
 })
 </script>
@@ -353,38 +375,48 @@ const dslReadOnlyHeaderForEditor = computed(() => {
       <Splitter class="flow-splitter" state-key="flows-splitter" state-storage="local">
         <SplitterPanel :size="40" :min-size="20" class="dsl-panel">
 
-          <DslEditor
-            :model-value="editorDsl"
-            :completion-names="completionNames"
-            :validation-status="validationStatus"
-            :read-only-header="dslReadOnlyHeaderForEditor"
-            @update:model-value="onDslChange"
+          <!-- Guided mode -->
+          <FlowStepSpreadsheet
+            v-if="!dslEdit"
+            :dag="dag"
+            :flow="selectedFlow"
           />
 
-          <div v-if="syntaxError" class="issue-list error-list">
-            <div class="issue-item">
-              <i class="pi pi-times-circle" />
-              <span>{{ syntaxError }}</span>
-            </div>
-          </div>
+          <!-- DSL mode -->
+          <template v-else>
+            <DslEditor
+              :model-value="editorDsl"
+              :completion-names="completionNames"
+              :validation-status="validationStatus"
+              :read-only-header="dslReadOnlyHeaderForEditor"
+              @update:model-value="onDslChange"
+            />
 
-          <!-- Unknown participants -->
-          <div v-if="unknownParticipants.length > 0" class="issue-list error-list">
-            <div class="issue-item">
-              <i class="pi pi-question-circle" />
-              <span>Unknown participants (not in model): <strong>{{ unknownParticipants.join(', ') }}</strong></span>
+            <div v-if="syntaxError" class="issue-list error-list">
+              <div class="issue-item">
+                <i class="pi pi-times-circle" />
+                <span>{{ syntaxError }}</span>
+              </div>
             </div>
-          </div>
+
+            <!-- Unknown participants -->
+            <div v-if="unknownParticipants.length > 0" class="issue-list error-list">
+              <div class="issue-item">
+                <i class="pi pi-question-circle" />
+                <span>Unknown participants (not in model): <strong>{{ unknownParticipants.join(', ') }}</strong></span>
+              </div>
+            </div>
+          </template>
 
           <!-- Auto-sync mode: all relations are live in landscape -->
-          <div v-if="landscapeAutoSync && dag.applicationFlows.length > 0 && !syntaxError && unknownParticipants.length === 0" class="issue-list synced-list">
+          <div v-if="landscapeAutoSync && dag.applicationFlows.length > 0 && (dslEdit ? !syntaxError && unknownParticipants.length === 0 : true)" class="issue-list synced-list">
             <div class="issue-item">
               <i class="pi pi-check-circle" />
               <span>Relations synced with landscape (auto-sync mode)</span>
             </div>
           </div>
 
-          <!-- Manual/guided mode: show missing relations (only when all participants are known) -->
+          <!-- Missing relations warning (guided + DSL mode) -->
           <div v-else-if="!landscapeAutoSync && missingRelations.length > 0 && unknownParticipants.length === 0" class="issue-list warning-list">
             <div class="warning-header">
               <span><i class="pi pi-exclamation-triangle" /> {{ missingRelations.length }} relation(s) not in landscape</span>

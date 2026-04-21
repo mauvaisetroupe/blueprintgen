@@ -10,8 +10,8 @@ export { toNodeId as toParticipantId }
 // Seules les flèches forward sont retenues (les -->> ne font pas de step).
 // Les participants inconnus (pas dans le modèle) sont ignorés.
 export function parseFlowSteps(body: string, dag: Dag): FlowStep[] {
-  const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
-  const RETURN  = /^([a-zA-Z_]\w*)\s*(-->>[\+\-]?|-->[\+\-]?|--x)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+  const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.*)$/
+  const RETURN  = /^([a-zA-Z_]\w*)\s*(-->>[\+\-]?|-->[\+\-]?|--x)\s*([a-zA-Z_]\w*)\s*:\s*(.*)$/
   const steps: FlowStep[] = []
   let order = 1
   for (const raw of body.split('\n')) {
@@ -137,8 +137,8 @@ export function buildActivityDsl(
   subgraphCategoryIds: Set<string> = new Set(),
   showReturns = false,
 ): string {
-  const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
-  const RETURN  = /^([a-zA-Z_]\w*)\s*(-->>[\+\-]?|-->[\+\-]?|--x)\s*([a-zA-Z_]\w*)\s*:\s*(.+)$/
+  const FORWARD = /^([a-zA-Z_]\w*)\s*(->>[\+\-]?|-x|->[\+\-]?)\s*([a-zA-Z_]\w*)\s*:\s*(.*)$/
+  const RETURN  = /^([a-zA-Z_]\w*)\s*(-->>[\+\-]?|-->[\+\-]?|--x)\s*([a-zA-Z_]\w*)\s*:\s*(.*)$/
 
   const componentMap = new Map(
     dag.components
@@ -212,6 +212,25 @@ export function buildActivityDsl(
   }
 
   return lines.join('\n')
+}
+
+// Builds a sequence diagram body (arrows only, no participant declarations) from structured steps.
+export function buildSequenceBodyFromSteps(steps: FlowStep[], dag: Dag): string {
+  return [...steps]
+    .sort((a, b) => a.order - b.order)
+    .map((step) => {
+      if (!step.fromComponentId || !step.toComponentId) return null
+      const from = dag.components.find((c) => c.id === step.fromComponentId)
+      const to   = dag.components.find((c) => c.id === step.toComponentId)
+      if (!from || !to) return null
+      const fromId = toNodeId(from.name)
+      const toId   = toNodeId(to.name)
+      const arrow  = step.isReturn ? '-->>' : '->>'
+      const label  = step.label?.trim() ?? ''
+      return `  ${fromId} ${arrow} ${toId}: ${label}`
+    })
+    .filter((l): l is string => l !== null)
+    .join('\n')
 }
 
 // Builds the full Mermaid sequenceDiagram DSL from a body + the DAG model.
