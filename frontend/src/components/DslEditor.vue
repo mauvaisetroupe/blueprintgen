@@ -12,7 +12,6 @@ const props = defineProps<{
   completionNames?: string[]
   validationStatus?: 'idle' | 'validating' | 'syntax-error' | 'warnings' | 'valid'
   readOnlyHeader?: string
-  readOnlyFooter?: string
 }>()
 
 const emit = defineEmits<{
@@ -21,29 +20,27 @@ const emit = defineEmits<{
 
 // ── Document helpers ───────────────────────────────────────────────────────────
 
-function buildFullDoc(header: string, body: string, footer: string): string {
+function buildFullDoc(header: string, body: string): string {
   const parts: string[] = []
   if (header) parts.push(header)
   parts.push(body)
-  if (footer) parts.push(footer)
   return parts.join('\n')
 }
 
 function calcHeaderLen(header: string) { return header ? header.length + 1 : 0 }
-function calcFooterLen(footer: string) { return footer ? footer.length + 1 : 0 }
 
-function extractBody(fullDoc: string, headerLen: number, footerLen: number): string {
-  return fullDoc.slice(headerLen, footerLen > 0 ? fullDoc.length - footerLen : undefined)
+function extractBody(fullDoc: string, headerLen: number): string {
+  return fullDoc.slice(headerLen)
 }
 
 // ── Boundary state field ───────────────────────────────────────────────────────
-// Stores header/footer lengths so both the readonly extension and the decoration
-// can access them from the EditorState without closing over external variables.
+// Stores header length so both the readonly extension and the decoration
+// can access it from the EditorState without closing over external variables.
 
-const setBoundaries = StateEffect.define<{ headerLen: number; footerLen: number }>()
+const setBoundaries = StateEffect.define<{ headerLen: number }>()
 
-const boundariesField = StateField.define<{ headerLen: number; footerLen: number }>({
-  create: () => ({ headerLen: 0, footerLen: 0 }),
+const boundariesField = StateField.define<{ headerLen: number }>({
+  create: () => ({ headerLen: 0 }),
   update(value, tr) {
     for (const effect of tr.effects) {
       if (effect.is(setBoundaries)) return effect.value
@@ -55,11 +52,9 @@ const boundariesField = StateField.define<{ headerLen: number; footerLen: number
 // ── Read-only ranges extension ─────────────────────────────────────────────────
 
 const readonlyRangesExt = readOnlyRanges((state: EditorState) => {
-  const { headerLen, footerLen } = state.field(boundariesField)
-  const docLen = state.doc.length
+  const { headerLen } = state.field(boundariesField)
   const ranges: Array<{ from: number | undefined; to: number | undefined }> = []
   if (headerLen > 0) ranges.push({ from: 0, to: headerLen })
-  if (footerLen > 0) ranges.push({ from: docLen - footerLen, to: docLen })
   return ranges
 })
 
@@ -78,14 +73,12 @@ const readonlyPlugin = ViewPlugin.fromClass(
 )
 
 function buildDecorations(view: EditorView): DecorationSet {
-  const { headerLen, footerLen } = view.state.field(boundariesField)
+  const { headerLen } = view.state.field(boundariesField)
   const docLen = view.state.doc.length
   const builder = new RangeSetBuilder<Decoration>()
   const mark = Decoration.mark({ class: 'cm-readonly-zone' })
   // Header text (exclude trailing '\n' separator)
   if (headerLen > 1) builder.add(0, Math.min(headerLen - 1, docLen), mark)
-  // Footer text (exclude leading '\n' separator)
-  if (footerLen > 1 && docLen > footerLen) builder.add(docLen - footerLen + 1, docLen, mark)
   return builder.finish()
 }
 
@@ -136,60 +129,51 @@ const extensions = [
 ]
 
 // ── View reference & initial document ─────────────────────────────────────────
-// initialDoc is set once and never updated — vue-codemirror uses it only to
-// seed the editor on mount.  All subsequent doc changes go through view.dispatch
-// so the cursor position is preserved.
 
 let cmView: EditorView | null = null
 
 const initialDoc = ref(
-  buildFullDoc(props.readOnlyHeader ?? '', props.modelValue, props.readOnlyFooter ?? ''),
+  buildFullDoc(props.readOnlyHeader ?? '', props.modelValue),
 )
 
 function onReady({ view }: { view: EditorView }) {
   cmView = view
   const hLen = calcHeaderLen(props.readOnlyHeader ?? '')
-  const fLen = calcFooterLen(props.readOnlyFooter ?? '')
-  view.dispatch({ effects: setBoundaries.of({ headerLen: hLen, footerLen: fLen }) })
+  view.dispatch({ effects: setBoundaries.of({ headerLen: hLen }) })
 }
 
 // ── Emit only the editable body ────────────────────────────────────────────────
 
 function onDocChange(fullDocValue: string) {
   if (!cmView) return
-  const { headerLen, footerLen } = cmView.state.field(boundariesField)
-  const body = extractBody(fullDocValue, headerLen, footerLen)
+  const { headerLen } = cmView.state.field(boundariesField)
+  const body = extractBody(fullDocValue, headerLen)
   if (body !== props.modelValue) emit('update:modelValue', body)
 }
 
 // ── Prop watchers → view.dispatch ─────────────────────────────────────────────
 
-// Body updated externally (parent debounce sync)
+// Body updated externally
 watch(() => props.modelValue, (newBody) => {
   if (!cmView) return
-  const { headerLen, footerLen } = cmView.state.field(boundariesField)
-  const docLen = cmView.state.doc.length
-  const currentBody = extractBody(cmView.state.doc.toString(), headerLen, footerLen)
+  const { headerLen } = cmView.state.field(boundariesField)
+  const currentBody = extractBody(cmView.state.doc.toString(), headerLen)
   if (currentBody === newBody) return  // already in sync, avoid loop
-
-  const bodyEnd = footerLen > 0 ? docLen - footerLen : docLen
-  cmView.dispatch({ changes: { from: headerLen, to: bodyEnd, insert: newBody } })
+  cmView.dispatch({ changes: { from: headerLen, to: cmView.state.doc.length, insert: newBody } })
 })
 
 // Header or footer changed (component renamed, subgraph toggled…)
-watch([() => props.readOnlyHeader, () => props.readOnlyFooter], ([newHeader, newFooter]) => {
+watch(() => props.readOnlyHeader, (newHeader) => {
   if (!cmView) return
   const header = newHeader ?? ''
-  const footer = newFooter ?? ''
   const hLen = calcHeaderLen(header)
-  const fLen = calcFooterLen(footer)
-  const { headerLen, footerLen } = cmView.state.field(boundariesField)
-  const currentBody = extractBody(cmView.state.doc.toString(), headerLen, footerLen)
-  const newDoc = buildFullDoc(header, currentBody, footer)
+  const { headerLen } = cmView.state.field(boundariesField)
+  const currentBody = extractBody(cmView.state.doc.toString(), headerLen)
+  const newDoc = buildFullDoc(header, currentBody)
 
   cmView.dispatch({
     changes: { from: 0, to: cmView.state.doc.length, insert: newDoc },
-    effects: setBoundaries.of({ headerLen: hLen, footerLen: fLen }),
+    effects: setBoundaries.of({ headerLen: hLen }),
   })
 })
 </script>
@@ -254,7 +238,7 @@ watch([() => props.readOnlyHeader, () => props.readOnlyFooter], ([newHeader, new
 
 /* Read-only zones (header / footer) — grey text */
 .dsl-editor :deep(.cm-readonly-zone) {
-  color:  #a8968e;
+  color:  #f0aa8c;
 }
 
 .dsl-editor.status-syntax-error {

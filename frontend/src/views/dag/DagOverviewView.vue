@@ -89,7 +89,7 @@ async function runValidation(code: string) {
 
 watch(editMode, (mode) => {
   if (mode === 'manual' && dag.value) {
-    dslBody.value = generateComponentsBody(dag.value)
+    dslBody.value = generateComponentsBody(dag.value, false, true)
     syntaxError.value = null
     functionalResult.value = null
     runValidation(dslHeader + '\n' + dslBody.value)

@@ -56,7 +56,7 @@ export function generateLandscapeHeader(dag: Dag): string {
 }
 
 /** Subgraphs + nodes uniquement — sans header ni flèches (zone read-only de l'éditeur DSL) */
-export function generateComponentsBody(dag: Dag): string {
+export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName: boolean): string {
   const lines: string[] = []
   const sortedCategories = [...dag.categories].sort((a, b) => a.order - b.order)
 
@@ -64,15 +64,16 @@ export function generateComponentsBody(dag: Dag): string {
     const components = dag.components.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
     if (components.length === 0) continue
 
-    if (category.showSubgraph) {
+    const nameSuffix = (comp: any) => addName ? `["${comp.name}"]` : ''
+
+    if (forceCategory || category.showSubgraph) {
       lines.push(`  subgraph ${category.name}`)
-      for (const comp of components) lines.push(`    ${toNodeId(comp.name)}["${comp.name}"]`)
+      for (const comp of components) lines.push(`    ${toNodeId(comp.name)}${nameSuffix(comp)}`)
       lines.push('  end')
     } else {
-      for (const comp of components) lines.push(`  ${toNodeId(comp.name)}["${comp.name}"]`)
+      for (const comp of components) lines.push(`    ${toNodeId(comp.name)}${nameSuffix(comp)}`)
     }
   }
-
   return lines.join('\n')
 }
 
@@ -105,7 +106,7 @@ export function generateAutoSyncRelationsBody(dag: Dag): string {
  * Lit toutes les options depuis dag.landscape (useElk, autoSync).
  */
 export function generateLandscapeDsl(dag: Dag): string {
-  const parts: string[] = [generateLandscapeHeader(dag), generateComponentsBody(dag)]
+  const parts: string[] = [generateLandscapeHeader(dag), generateComponentsBody(dag, false, true)]
 
   const manual = generateManualRelationsBody(dag)
   if (manual) parts.push(manual)

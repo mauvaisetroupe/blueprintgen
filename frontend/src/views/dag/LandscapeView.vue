@@ -53,9 +53,25 @@ const localRelationsBody = ref(
 )
 
 // Header read-only = frontmatter + flowchart TB + components/subgraphs
-const dslReadOnlyHeader = computed(() => {
+// On isole la config (frontmatter)
+const dslFrontmatter = computed(() => {
   if (!dag.value) return ''
-  return generateLandscapeHeader(dag.value) + '\n' + generateComponentsBody(dag.value)
+  // On suppose que generateLandscapeHeader génère le bloc ---config---
+  return generateLandscapeHeader(dag.value)
+})
+
+// Le header que l'EDITEUR affichera (uniquement les components/subgraphs)
+const dslReadOnlyHeaderForEditor = computed(() => {
+  if (!dag.value) return ''
+  const lines: string[] = []
+  lines.push(generateComponentsBody(dag.value, true, false))
+  const example = (dag.value.components[0]?.name && dag.value.components[1]?.name)
+    ? `${toNodeId(dag.value.components[0].name)} --> ${toNodeId(dag.value.components[1].name)}`
+    : "internet_user --> ordering_service"
+
+  lines.push("  %% Tip: Use AUTOSYNC to import relationships from sequence diagrams.");
+  lines.push(`  %% Add links here (e.g., ${example})`)
+  return lines.join('\n')
 })
 
 // Footer read-only = relations auto-sync (si toggle activé)
@@ -81,7 +97,9 @@ watch(editMode, (mode) => {
 const activeDsl = computed(() => {
   if (!dag.value) return ''
   if (editMode.value === 'manual') {
-    const parts = [dslReadOnlyHeader.value]
+    const parts = []
+    if (dslFrontmatter.value) parts.push(dslFrontmatter.value)
+    parts.push(generateComponentsBody(dag.value, false, true))
     if (localRelationsBody.value.trim()) parts.push(localRelationsBody.value)
     if (dslReadOnlyFooter.value.trim())  parts.push(dslReadOnlyFooter.value)
     return parts.join('\n')
@@ -113,10 +131,10 @@ async function runValidation() {
     return
   }
 
-  // Validate only the editable part (header + manual relations), never the autosync footer
+  // Validate only the editable part (header with full name + manual relations), never the autosync footer
   // so autosync relations don't trigger spurious "new relation" warnings
-  const editableCode = [dslReadOnlyHeader.value, localRelationsBody.value].join('\n')
-  functionalResult.value = validateDslAgainstModel(editableCode, dag.value)
+  const codeToValidate = [generateComponentsBody(dag.value, false, true), localRelationsBody.value].join('\n')
+  functionalResult.value = validateDslAgainstModel(codeToValidate, dag.value)
   isValidating.value = false
 }
 
@@ -295,8 +313,7 @@ async function copyMermaid() {
 
         <DslEditor
           :model-value="localRelationsBody"
-          :read-only-header="dslReadOnlyHeader"
-          :read-only-footer="dslReadOnlyFooter || undefined"
+          :read-only-header="dslReadOnlyHeaderForEditor"
           :completion-names="completionNames"
           :validation-status="validationStatus"
           @update:model-value="onRelationsChange"
