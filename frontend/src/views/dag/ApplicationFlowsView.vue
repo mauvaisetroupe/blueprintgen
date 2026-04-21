@@ -14,6 +14,7 @@ import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import { exportFlowToDrawio } from '@/utils/drawioExporter'
+import { generateComponentsBody, toNodeId } from '@/utils/landscapeDslGenerator'
 
 const route = useRoute()
 const store = useDagStore()
@@ -284,6 +285,19 @@ async function copyMermaid() {
   if (!renderedDsl.value.trim()) return
   await navigator.clipboard.writeText(renderedDsl.value)
 }
+
+const dslReadOnlyHeaderForEditor = computed(() => {
+  if (!dag.value) return ''
+  const lines: string[] = []
+  lines.push(generateComponentsBody(dag.value, true, false))
+  const example = (dag.value.components[0]?.name && dag.value.components[1]?.name)
+    ? `${toNodeId(dag.value.components[0].name)} --> ${toNodeId(dag.value.components[1].name)}`
+    : "internet_user --> ordering_service"
+
+  lines.push("  %% Tip: Use AUTOSYNC to import relationships from sequence diagrams.");
+  lines.push(`  %% Add links here (e.g., ${example})`)
+  return lines.join('\n')
+})
 </script>
 
 <template>
@@ -343,6 +357,7 @@ async function copyMermaid() {
             :model-value="editorDsl"
             :completion-names="completionNames"
             :validation-status="validationStatus"
+            :read-only-header="dslReadOnlyHeaderForEditor"
             @update:model-value="onDslChange"
           />
 
