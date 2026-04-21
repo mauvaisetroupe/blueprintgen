@@ -2,7 +2,7 @@ import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
-import { buildSequenceDsl, buildActivityDsl } from './sequenceDslGenerator'
+import { buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
 import { extractSequenceStepPositions, extractActivityStepPositions, addNumberOverlays } from './pptxSequenceOverlay'
 
@@ -248,17 +248,21 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
   const contentY = headerY + consumed + 0.12
   const contentH = SLIDE_H - contentY - 0.15
 
-  // ── Sequence ou Activity diagram selon les préférences sauvegardées ──────
-  const fv         = dag.flowsView ?? {}
-  const isActivity = fv.diagramMode === 'activity'
+  // ── Sequence ou Activity diagram selon les préférences propres au flow ───
+  const vo         = flow.viewOptions ?? {}
+  const isActivity = vo.diagramMode === 'activity'
+  // Corps DSL : priorité aux steps structurés (source de vérité en mode guidé)
+  const resolvedBody = flow.steps.length > 0
+    ? buildSequenceBodyFromSteps(flow.steps, dag)
+    : flowBody
   const fullDsl    = isActivity
     ? buildActivityDsl(
-        flowBody, dag,
-        fv.useElk          ?? true,
-        new Set(fv.subgraphCategoryIds ?? dag.categories.map((c) => c.id)),
-        fv.showReturns     ?? false,
+        resolvedBody, dag,
+        vo.useElk      ?? false,
+        new Set(vo.subgraphCategoryIds ?? dag.categories.map((c) => c.id)),
+        vo.showReturns ?? false,
       )
-    : buildSequenceDsl(numberForwardArrows(flowBody), dag)
+    : buildSequenceDsl(numberForwardArrows(resolvedBody), dag)
   const { dataUrl, naturalW, naturalH, svgString } = await renderMermaidToPng(fullDsl)
   const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })
@@ -316,7 +320,7 @@ export async function exportToPptx(dag: Dag): Promise<void> {
 
   // 2. One slide per application flow
   for (const flow of dag.applicationFlows) {
-    if (!flow.mermaidDsl?.trim()) continue
+    if (!flow.mermaidDsl?.trim() && flow.steps.length === 0) continue
     await addFlowSlide(pptx, dag, flow)
   }
 
