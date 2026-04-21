@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { exportToPptx } from '@/utils/pptxExporter'
@@ -21,11 +21,18 @@ const dag = computed(() => store.getDag(route.params.id as string))
 const isFlowsTab = computed(() => route.path.endsWith('/flows'))
 const isComponents = computed(() => route.path.endsWith('/components'))
 
-const dslEdit = ref(dslEditPreference.value)
-const lastUserChoice = ref(true);
+const dslEdit = ref()
+
+onMounted(() => {
+  setDslEdit()
+})
 
 watch([isFlowsTab, isComponents], () => {
-  if (isFlowsTab.value) {
+  setDslEdit()
+})
+
+function setDslEdit() {
+    if (isFlowsTab.value) {
     dslEdit.value = true // Force le false si on est sur l'onglet Flows
   }
   else if (isComponents.value) {
@@ -34,7 +41,7 @@ watch([isFlowsTab, isComponents], () => {
   else {
     dslEdit.value = dslEditPreference.value
   }
-})
+}
 
 watch(dslEdit, (newValue) => {
   // On ne sauvegarde le choix que si l'utilisateur n'est pas 
