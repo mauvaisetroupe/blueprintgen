@@ -16,7 +16,7 @@ format_value() {
   fi
 }
 
-cat > /usr/share/nginx/html/config.js << EOF
+cat > /usr/share/nginx/html/blueprintgen/config.js << EOF
 window.__APP_CONFIG__ = {
   appName: $(format_value "$APP_NAME"),
   logoPath: $(format_value "$LOGO_PATH"),
