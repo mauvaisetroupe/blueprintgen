@@ -14,6 +14,11 @@ const router = createRouter({
       component: () => import('@/views/DagCreateView.vue'),
     },
     {
+      path: '/import',
+      name: 'dag-import',
+      component: () => import('@/views/DagImportView.vue'),
+    },
+    {
       path: '/dag/:id',
       component: () => import('@/views/DagDetailLayout.vue'),
       children: [

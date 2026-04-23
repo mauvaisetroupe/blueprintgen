@@ -98,6 +98,21 @@ export interface Dag {
   applicationFlows: ApplicationFlow[]
 }
 
+// --- Generic import format (used by external apps to pre-populate a DAG) ---
+
+export interface DagImportDraftComponent {
+  name: string
+  description: string
+  category: string  // category name
+}
+
+export interface DagImportDraft {
+  name: string
+  description: string
+  categories: string[]
+  components?: DagImportDraftComponent[]
+}
+
 // Default categories based on the reference Mermaid example
 export const DEFAULT_CATEGORIES: Omit<Category, 'id'>[] = [
   { name: 'Users',            order: 1, showSubgraph: true },
