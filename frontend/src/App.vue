@@ -2,16 +2,16 @@
 import { RouterView } from 'vue-router'
 import Toast from 'primevue/toast'
 
+const baseUrl = import.meta.env.BASE_URL
 const appName = import.meta.env.VITE_APP_NAME || 'blueprintgen'
-const logoSrc = import.meta.env.VITE_LOGO_PATH || '/logo/logo.svg'
-
-const FALLBACK_LOGO = '/logo/logo.svg'
+const fallbackLogoSrc = `${baseUrl}logo/logo.png`
+const logoSrc = import.meta.env.VITE_LOGO_PATH || fallbackLogoSrc
 
 const handleLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement
-  if (img.src.endsWith(FALLBACK_LOGO)) return // déjà sur le fallback, on arrête
-  console.warn(`Error loading logo : ${logoSrc}`)
-  img.src = FALLBACK_LOGO
+  if (img.src === logoSrc) return // VITE_LOGO_PATH non défini, pas de fallback possible
+  console.warn(`Erreur chargement logo : ${logoSrc}`)
+  img.src = fallbackLogoSrc
 }
 
 </script>
