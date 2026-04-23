@@ -6,8 +6,6 @@ interface AppConfig {
   homeUrl: string | null
 }
 
-declare global {
-  interface Window {
-    __APP_CONFIG__: AppConfig
-  }
+interface Window {
+  __APP_CONFIG__: AppConfig
 }
