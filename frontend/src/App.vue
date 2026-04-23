@@ -3,13 +3,15 @@ import { RouterView } from 'vue-router'
 import Toast from 'primevue/toast'
 
 const baseUrl = import.meta.env.BASE_URL
-const appName = import.meta.env.VITE_APP_NAME || 'blueprintgen'
+const cfg = window.__APP_CONFIG__
+const appName = cfg.appName
 const fallbackLogoSrc = `${baseUrl}logo/logo.png`
-const logoSrc = import.meta.env.VITE_LOGO_PATH || fallbackLogoSrc
+const logoSrc = cfg.logoPath ?? fallbackLogoSrc
+const homeUrl = cfg.homeUrl  // null = router-link interne, sinon URL externe
 
 const handleLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement
-  if (img.src === logoSrc) return // VITE_LOGO_PATH non défini, pas de fallback possible
+  if (img.src === logoSrc) return // pas de logoPath configuré, pas de fallback possible
   console.warn(`Erreur chargement logo : ${logoSrc}`)
   img.src = fallbackLogoSrc
 }
@@ -30,12 +32,11 @@ const handleLogoError = (event: Event) => {
         <span class="header-title">{{ appName }}</span>
       </div>
       <div class="wrapper">
-        <nav>    
-          <router-link to="/" class="nav-link">
-            Dashboards
-          </router-link>
+        <nav>
+          <a v-if="homeUrl" :href="homeUrl" class="nav-link">Dashboards</a>
+          <router-link v-else to="/" class="nav-link">Dashboards</router-link>
         </nav>
-      </div>  
+      </div>
     </header>
     <main class="content">
       <RouterView />
