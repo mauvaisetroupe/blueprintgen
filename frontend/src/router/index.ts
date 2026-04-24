@@ -19,6 +19,11 @@ const router = createRouter({
       component: () => import('@/views/DagImportView.vue'),
     },
     {
+      path: '/dag/:id/delete',
+      name: 'dag-delete',
+      component: () => import('@/views/DagDeleteView.vue'),
+    },
+    {
       path: '/dag/:id',
       component: () => import('@/views/DagDetailLayout.vue'),
       children: [
