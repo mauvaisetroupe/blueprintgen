@@ -35,6 +35,20 @@ npm install
 npm run dev
 ```
 
+### Override runtime config locally (without Docker)
+
+Edit `public/config.js` with your local values. To prevent git from tracking your changes:
+
+```sh
+git update-index --skip-worktree frontend/public/config.js
+```
+
+To restore git tracking:
+
+```sh
+git update-index --no-skip-worktree frontend/public/config.js
+```
+
 ### Type-Check, Compile and Minify for Production
 
 ```sh
