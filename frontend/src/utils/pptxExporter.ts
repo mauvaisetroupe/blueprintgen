@@ -3,8 +3,7 @@ import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
 import { buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps } from './sequenceDslGenerator'
-import { inlineSvgStyles, injectHtmlLabelsFalse } from './svgInliner'
-import { extractSequenceStepPositions, extractActivityStepPositions, addNumberOverlays } from './pptxSequenceOverlay'
+import { inlineSvgStyles, injectHtmlLabelsFalse, styleCircledDigits } from './svgInliner'
 
 // Widescreen 13.33" × 7.5"
 const SLIDE_W = 13.33
@@ -13,7 +12,7 @@ const SLIDE_H = 7.5
 // Corporate colours (neutral — adapt to template later)
 const COLOR_TITLE_BG  = '1F3864'   // dark blue (landscape title bar)
 const COLOR_TITLE_FG  = 'FFFFFF'
-const COLOR_ACCENT    = '2D6FBF'   // blue for circled digits
+const COLOR_ACCENT    = 'FF6600'   // orange for circled digits
 const COLOR_LABEL     = '888888'   // grey for section labels
 const COLOR_RULE      = 'BBBBBB'   // light grey for section rules
 
@@ -102,10 +101,11 @@ function svgToPng(svgString: string): Promise<PngResult> {
   })
 }
 
-async function renderMermaidToPng(dsl: string): Promise<PngResult> {
+async function renderMermaidToPng(dsl: string, withStyledDigits = false, digitFontSize = 18): Promise<PngResult> {
   const id = `pptx-mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const { svg } = await mermaid.render(id, injectHtmlLabelsFalse(dsl))
-  return svgToPng(inlineSvgStyles(svg))
+  const inlined = inlineSvgStyles(svg)
+  return svgToPng(withStyledDigits ? styleCircledDigits(inlined, COLOR_ACCENT, digitFontSize) : inlined)
 }
 
 // Calcule les coordonnées exactes (en pouces) pour placer une image de naturalW×naturalH px
@@ -263,18 +263,9 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
         vo.showReturns ?? false,
       )
     : buildSequenceDsl(numberForwardArrows(resolvedBody), dag)
-  const { dataUrl, naturalW, naturalH, svgString } = await renderMermaidToPng(fullDsl)
+  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(fullDsl, true, 24)
   const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })
-
-  // Overlay des numéros cerclés (sequence ou activity)
-  if (flow.steps.length > 0) {
-    const forwardSteps = flow.steps.filter((s) => !s.isReturn)
-    const positions = isActivity
-      ? extractActivityStepPositions(svgString, forwardSteps.length)
-      : extractSequenceStepPositions(svgString, flow.steps)
-    addNumberOverlays(slide, positions, naturalW, naturalH, pos)
-  }
 
   // ── Description + numbered steps — right panel ───────────────────────────
   const rows: PptxGenJS.TextProps[] = []
@@ -291,11 +282,11 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
     const circle = CIRCLED_DIGITS[i] ?? `${i + 1}.`
     rows.push({
       text: `${circle}  `,
-      options: { bold: true, color: COLOR_ACCENT, fontSize: 11 },
+      options: { bold: true, color: COLOR_ACCENT, fontSize: 14 },
     })
     rows.push({
       text: steps[i] + '\n',
-      options: { bold: false, color: '333333', fontSize: 11 },
+      options: { bold: false, color: '333333', fontSize: 14 },
     })
   }
 

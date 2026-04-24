@@ -78,3 +78,55 @@ function fixAttr(el: SVGElement, attr: string): void {
 function isTransparent(color: string): boolean {
   return color === 'transparent' || /^rgba\(\s*0,\s*0,\s*0,\s*0\s*\)$/.test(color)
 }
+
+const CIRCLED_DIGIT_RE = /^(\s*[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*)(.*)/s
+
+/**
+ * Colore et agrandit les chiffres cerclés ①②③ dans le SVG Mermaid.
+ * Cible les labels de flèches dans les diagrammes de séquence et d'activité.
+ * Remplace chaque text par deux <tspan> : le ① stylisé + le reste du label normal.
+ */
+export function styleCircledDigits(
+  svgString: string,
+  color = '2D6FBF',
+  fontSize = 18,
+): string {
+  const div = document.createElement('div')
+  div.innerHTML = svgString
+  const svg = div.querySelector('svg')
+  if (!svg) return svgString
+
+  const selectors = ['text.messageText', 'g.edgeLabel text']
+
+  for (const selector of selectors) {
+    svg.querySelectorAll<SVGTextElement>(selector).forEach((el) => {
+      const text = el.textContent ?? ''
+      const match = text.match(CIRCLED_DIGIT_RE)
+      if (!match) return
+
+      const circle = match[1] ?? ''
+      const rest   = match[2] ?? ''
+
+      el.textContent = ''
+
+      const tCircle = document.createElementNS('http://www.w3.org/2000/svg', 'tspan')
+      tCircle.setAttribute('fill', `#${color}`)
+      tCircle.setAttribute('font-size', String(fontSize))
+      tCircle.setAttribute('font-weight', 'bold')
+      tCircle.textContent = circle
+
+      const tRest = document.createElementNS('http://www.w3.org/2000/svg', 'tspan')
+      tRest.textContent = rest
+
+      el.appendChild(tCircle)
+      el.appendChild(tRest)
+
+      // Move g.edgeLabel to end of SVG so it renders above nodes.
+      // g.edgeLabel carries its own transform="translate(x,y)" so position is preserved.
+      const edgeLabel = el.closest('g.edgeLabel')
+      if (edgeLabel) svg.appendChild(edgeLabel)
+    })
+  }
+
+  return div.querySelector('svg')?.outerHTML ?? svgString
+}
