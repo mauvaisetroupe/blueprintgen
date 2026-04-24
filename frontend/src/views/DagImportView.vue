@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { DEFAULT_CATEGORIES, type DagImportDraft, type Dag } from '@/types/dag'
+import type { DagImportDraft } from '@/types/dag'
 
 const IMPORT_STORAGE_KEY = 'blueprintgen:import'
 
@@ -10,57 +10,10 @@ const router = useRouter()
 const store = useDagStore()
 const errorMessage = ref<string | null>(null)
 
-function generateId(): string {
-  return crypto.randomUUID()
-}
-
-function now(): string {
-  return new Date().toISOString()
-}
-
-function buildDag(draft: DagImportDraft): Dag {
-  // Map category names to Category objects.
-  // Match against DEFAULT_CATEGORIES first, otherwise create new ones.
-  const defaultByName = new Map(DEFAULT_CATEGORIES.map((c) => [c.name.toLowerCase(), c]))
-
-  const categories = draft.categories.map((name, index) => {
-    const defaults = defaultByName.get(name.toLowerCase())
-    return {
-      id: generateId(),
-      name: defaults?.name ?? name,
-      order: defaults?.order ?? DEFAULT_CATEGORIES.length + index + 1,
-      showSubgraph: defaults?.showSubgraph ?? true,
-    }
-  })
-
-  const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c]))
-
-  const components = (draft.components ?? []).map((c) => ({
-    id: generateId(),
-    name: c.name,
-    description: c.description,
-    categoryId: categoryByName.get(c.category.toLowerCase())?.id ?? '',
-  }))
-
-  return {
-    id: generateId(),
-    name: draft.name,
-    description: draft.description,
-    createdAt: now(),
-    updatedAt: now(),
-    categories,
-    components,
-    relations: [],
-    landscape: {},
-    technicalLandscape: { components: [] },
-    applicationFlows: [],
-  }
-}
-
 onMounted(() => {
   const raw = localStorage.getItem(IMPORT_STORAGE_KEY)
   if (!raw) {
-    errorMessage.value = 'No import data found in localStorage.'
+    errorMessage.value = 'No import data found.'
     return
   }
 
@@ -73,14 +26,14 @@ onMounted(() => {
     return
   }
 
-  if (!draft.name || !Array.isArray(draft.categories)) {
-    errorMessage.value = 'Import data is missing required fields (name, categories).'
+  if (!draft.id || !draft.name || !Array.isArray(draft.categories)) {
+    errorMessage.value = 'Import data is missing required fields (id, name, categories).'
     localStorage.removeItem(IMPORT_STORAGE_KEY)
     return
   }
 
   localStorage.removeItem(IMPORT_STORAGE_KEY)
-  const dag = store.openDag(buildDag(draft))
+  const dag = store.importDag(draft)
   router.replace(`/dag/${dag.id}/components`)
 })
 </script>

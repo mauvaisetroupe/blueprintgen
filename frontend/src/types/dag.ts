@@ -107,6 +107,7 @@ export interface DagImportDraftComponent {
 }
 
 export interface DagImportDraft {
+  id: string        // stable ID provided by the calling app — used for upsert
   name: string
   description: string
   categories: string[]

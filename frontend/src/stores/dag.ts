@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, DEFAULT_CATEGORIES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -72,6 +72,96 @@ export const useDagStore = defineStore(
         categories:         data.categories         ?? [],
         components:         data.components         ?? [],
         technicalLandscape: data.technicalLandscape ?? { components: [] },
+      }
+      dags.value.push(dag)
+      return dag
+    }
+
+    /**
+     * Imports a DAG from an external draft (upsert by ID).
+     * - If a DAG with the same ID already exists: updates name/description and
+     *   merges categories and components additively (existing data is preserved).
+     * - If not: creates a new DAG from the draft.
+     */
+    function importDag(draft: DagImportDraft): Dag {
+      const defaultByName = new Map(DEFAULT_CATEGORIES.map((c) => [c.name.toLowerCase(), c]))
+      const existing = dags.value.find((d) => d.id === draft.id)
+
+      if (existing) {
+        existing.name = draft.name
+        existing.description = draft.description
+
+        // Merge categories — add missing ones, keep existing ones intact
+        for (const catName of draft.categories) {
+          const alreadyExists = existing.categories.some(
+            (c) => c.name.toLowerCase() === catName.toLowerCase(),
+          )
+          if (!alreadyExists) {
+            const defaults = defaultByName.get(catName.toLowerCase())
+            existing.categories.push({
+              id: generateId(),
+              name: defaults?.name ?? catName,
+              order: defaults?.order ?? existing.categories.length + 1,
+              showSubgraph: defaults?.showSubgraph ?? true,
+            })
+          }
+        }
+
+        // Merge components — add missing ones, keep existing ones intact
+        for (const comp of draft.components ?? []) {
+          const alreadyExists = existing.components.some(
+            (c) => c.name.toLowerCase() === comp.name.toLowerCase(),
+          )
+          if (!alreadyExists) {
+            const category = existing.categories.find(
+              (c) => c.name.toLowerCase() === comp.category.toLowerCase(),
+            )
+            existing.components.push({
+              id: generateId(),
+              name: comp.name,
+              description: comp.description,
+              categoryId: category?.id ?? '',
+            })
+          }
+        }
+
+        existing.updatedAt = now()
+        return existing
+      }
+
+      // Create new DAG from draft
+      const categoryByName = new Map<string, Category>()
+      const categories = draft.categories.map((name, index) => {
+        const defaults = defaultByName.get(name.toLowerCase())
+        const cat: Category = {
+          id: generateId(),
+          name: defaults?.name ?? name,
+          order: defaults?.order ?? DEFAULT_CATEGORIES.length + index + 1,
+          showSubgraph: defaults?.showSubgraph ?? true,
+        }
+        categoryByName.set(name.toLowerCase(), cat)
+        return cat
+      })
+
+      const components = (draft.components ?? []).map((c) => ({
+        id: generateId(),
+        name: c.name,
+        description: c.description,
+        categoryId: categoryByName.get(c.category.toLowerCase())?.id ?? '',
+      }))
+
+      const dag: Dag = {
+        id: draft.id,
+        name: draft.name,
+        description: draft.description,
+        createdAt: now(),
+        updatedAt: now(),
+        categories,
+        components,
+        relations: [],
+        landscape: {},
+        technicalLandscape: { components: [] },
+        applicationFlows: [],
       }
       dags.value.push(dag)
       return dag
@@ -342,6 +432,7 @@ export const useDagStore = defineStore(
       updateDag,
       deleteDag,
       openDag,
+      importDag,
       getDag,
       addCategory,
       updateCategory,
