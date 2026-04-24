@@ -158,3 +158,58 @@ oc set env deployment/blueprintgen \
   LOGO_PATH="https://mycompany.com/logo/logo.svg" \
   HOME_URL="https://mycompany.com/architect-advisor"
 ```
+
+## Integration with external applications
+
+blueprintgen can be driven by an external application (e.g. an architecture wizard) via browser-native mechanisms. Both apps must be on the same domain.
+
+### Create or update a DAG
+
+Write a `DagImportDraft` payload to `localStorage` under the key `blueprintgen:import`, then redirect to `/blueprintgen/import`.
+
+blueprintgen will create the DAG if the `id` does not exist yet, or merge it additively (name, description, new categories and components) if it already does. Existing relations, flows and landscape data are always preserved.
+
+```js
+localStorage.setItem('blueprintgen:import', JSON.stringify({
+  id: 'a1b2c3d4-0000-0000-0000-000000000001', // stable ID managed by the calling app
+  name: 'E-Commerce Platform',
+  description: 'Online store with payment and order management',
+  categories: ['Frontends', 'Backends', 'External Systems', 'Data Storage'],
+  components: [
+    { name: 'Payment Gateway', description: 'Stripe payment system', category: 'External Systems' },
+    { name: 'Shipping API',    description: 'Carrier external API',  category: 'External Systems' },
+  ],
+}))
+window.location.href = '/blueprintgen/import'
+```
+
+**`DagImportDraft` format:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | `string` (UUID) | yes | Stable ID managed by the calling app |
+| `name` | `string` | yes | DAG name |
+| `description` | `string` | yes | DAG description |
+| `categories` | `string[]` | yes | Category names (matched against defaults if possible) |
+| `components` | `array` | no | Components to pre-populate |
+| `components[].name` | `string` | yes | Component name |
+| `components[].description` | `string` | yes | Component description |
+| `components[].category` | `string` | yes | Category name (must match one of `categories`) |
+
+> **Note on updates:** merging is additive only. A renamed component will appear as a new entry alongside the old one — the calling app should manage component identity via stable IDs if precise updates are needed.
+
+### Open a DAG
+
+Redirect directly to the DAG's component view using its ID:
+
+```js
+window.location.href = `/blueprintgen/dag/${dagId}/components`
+```
+
+### Delete a DAG
+
+Redirect to the delete route — blueprintgen deletes the DAG and redirects to the dashboard:
+
+```js
+window.location.href = `/blueprintgen/dag/${dagId}/delete`
+```
