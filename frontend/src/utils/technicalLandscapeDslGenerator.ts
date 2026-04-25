@@ -5,11 +5,9 @@ import { toNodeId } from './landscapeDslGenerator'
 /**
  * Génère le DSL Mermaid du landscape technique.
  *
- * Structure :
- * - Composants regroupés par zone réseau (subgraph externe)
- *   - puis par catégorie (subgraph interne, si showSubgraph)
- * - Composants sans zone dans un groupe "Unassigned"
- * - Relations applicatives (dag.relations) avec protocole si disponible
+ * IDs de nœuds :
+ * - 1 seule zone  → toNodeId(comp.name)           ex: web_frontend
+ * - Multi-zones   → toNodeId(comp.name)__toNodeId(zone.name)   ex: web_frontend__dmz
  */
 export function generateTechnicalLandscapeDsl(dag: Dag): string {
   const tl = dag.technicalLandscape
@@ -37,7 +35,6 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   const zones = allNetworkZones(tl).sort((a, b) => a.order - b.order)
   const renderedZoneIds: string[] = []
 
-  // Pour chaque zone, les composants qui y ont une instance
   for (const zone of zones) {
     const componentsInZone = dag.components.filter(
       (c) => c.name.trim() !== '' && tl.instances.some((i) => i.componentId === c.id && i.networkZoneId === zone.id),
@@ -47,24 +44,25 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     const zoneNodeId = toNodeId(zone.name)
     lines.push(`  subgraph ${zoneNodeId} ["${zone.name}"]`)
 
-    // Regrouper par catégorie à l'intérieur de la zone
     const sortedCategories = [...dag.categories].sort((a, b) => a.order - b.order)
     for (const category of sortedCategories) {
       const compsInCat = componentsInZone.filter((c) => c.categoryId === category.id)
       if (compsInCat.length === 0) continue
       const shape = DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase())
-
       const showSubgraph = tl.categorySubgraphs?.[category.id] ?? category.showSubgraph
+
       if (showSubgraph) {
         lines.push(`    subgraph ${zoneNodeId}_${toNodeId(category.name)} ["${category.name}"]`)
         for (const comp of compsInCat) {
-          const nodeId = instanceNodeId(comp.id, zone.id)
+          const isMulti = (instancesByComponent.get(comp.id)?.length ?? 0) > 1
+          const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
           lines.push(`      ${nodeId}${nodeLabel(comp, shape)}`)
         }
         lines.push('    end')
       } else {
         for (const comp of compsInCat) {
-          const nodeId = instanceNodeId(comp.id, zone.id)
+          const isMulti = (instancesByComponent.get(comp.id)?.length ?? 0) > 1
+          const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
           lines.push(`    ${nodeId}${nodeLabel(comp, shape)}`)
         }
       }
@@ -84,15 +82,11 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     lines.push('  end')
   }
 
-  // Relations applicatives (dag.relations) — avec protocole si disponible
+  // Relations
   const validIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
-
-  // Clés des relations manuelles pour dédupliquer l'autoSync
   const manualKeys = new Set(dag.relations.map((r) => `${r.fromComponentId}->${r.toComponentId}`))
-
   const relationsToRender = [...dag.relations]
 
-  // AutoSync partagé avec le landscape applicatif
   if (dag.landscape.autoSync) {
     for (const flow of dag.applicationFlows) {
       for (const step of flow.steps.filter((s) => !s.isReturn)) {
@@ -101,12 +95,8 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
         if (!validIds.has(step.fromComponentId) || !validIds.has(step.toComponentId)) continue
         manualKeys.add(key)
         relationsToRender.push({
-          id: '',
-          fromComponentId: step.fromComponentId,
-          toComponentId:   step.toComponentId,
-          protocol:        step.protocol,
-          label:           step.label,
-          source:          'manual',
+          id: '', fromComponentId: step.fromComponentId, toComponentId: step.toComponentId,
+          protocol: step.protocol, label: step.label, source: 'manual',
         })
       }
     }
@@ -117,23 +107,17 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
 
     const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)!
     const toComp   = dag.components.find((c) => c.id === rel.toComponentId)!
-
     const fromInsts = instancesByComponent.get(rel.fromComponentId) ?? []
     const toInsts   = instancesByComponent.get(rel.toComponentId)   ?? []
 
-    const fromId = fromInsts.length === 1 && fromInsts[0]
-      ? instanceNodeId(fromComp.id, fromInsts[0].networkZoneId)
-      : toNodeId(fromComp.name)
-    const toId = toInsts.length === 1 && toInsts[0]
-      ? instanceNodeId(toComp.id, toInsts[0].networkZoneId)
-      : toNodeId(toComp.name)
+    const fromId = resolveRelationNodeId(fromComp.name, fromInsts, zones)
+    const toId   = resolveRelationNodeId(toComp.name, toInsts, zones)
 
-    // Dans le landscape technique, on n'affiche que le protocole — pas le label fonctionnel
     const edgeLabel = rel.protocol
     lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
   }
 
-  // Styles des zones réseau : fond coloré + bordure pointillée
+  // Styles des zones : fond coloré + bordure pointillée
   for (const zoneNodeId of renderedZoneIds) {
     const zone = zones.find((z) => toNodeId(z.name) === zoneNodeId)
     if (!zone) continue
@@ -146,22 +130,33 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   return lines.join('\n')
 }
 
-// Supprime les caractères invalides dans les labels de flèches Mermaid (pipe syntax)
+// ID de nœud lisible : nom seul si 1 instance, nom__zone si multi-zone
+function nodeIdForInstance(compName: string, zoneName: string, isMulti: boolean): string {
+  return isMulti ? `${toNodeId(compName)}__${toNodeId(zoneName)}` : toNodeId(compName)
+}
+
+// Résout l'ID de nœud pour une extrémité de relation
+function resolveRelationNodeId(
+  compName: string,
+  instances: { networkZoneId: string }[],
+  zones: { id: string; name: string }[],
+): string {
+  if (instances.length === 0) return toNodeId(compName)
+  if (instances.length === 1) return toNodeId(compName)
+  // Multi-zone : on ne peut pas deviner quelle instance — on utilise la première (l'architecte ajustera via TechnicalRelation)
+  const zone = zones.find((z) => z.id === instances[0]?.networkZoneId)
+  return zone ? `${toNodeId(compName)}__${toNodeId(zone.name)}` : toNodeId(compName)
+}
+
 function sanitizeLabel(label: string): string {
   return label.replace(/[()[\]{}"]/g, '').trim()
 }
 
-// Identifiant Mermaid unique pour une instance (composant + zone)
-function instanceNodeId(componentId: string, zoneId: string): string {
-  return `inst_${componentId.replace(/-/g, '')}_${zoneId.replace(/-/g, '')}`
-}
-
-// Label Mermaid du nœud avec infos techniques
-function nodeLabel(comp: { name: string; technology?: string; framework?: string }, shape?: import('@/types/dag').NodeShape): string {
-  const lines = [comp.name]
-  if (comp.technology) lines.push(comp.technology)
-  if (comp.framework)  lines.push(comp.framework)
-  const label = lines.join('\\n')
+function nodeLabel(comp: { name: string; technology?: string; framework?: string }, shape?: NodeShape): string {
+  const parts = [comp.name]
+  if (comp.technology) parts.push(comp.technology)
+  if (comp.framework)  parts.push(comp.framework)
+  const label = parts.join('\\n')
   switch (shape) {
     case 'cylinder': return `[("${label}")]`
     case 'rounded':  return `(["${label}"])`
