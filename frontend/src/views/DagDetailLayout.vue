@@ -136,12 +136,15 @@ function saveLocally() {
 </template>
 
 <style scoped>
+/* --header-h et --tabs-h sont définis ici pour les vues plein écran */
+:root {
+  --header-h: 70px;
+  --tabs-h: 48px;
+}
+
 .detail-layout {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .detail-header {
@@ -164,6 +167,11 @@ function saveLocally() {
 
 .detail-tabs {
   padding: 0 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: var(--p-surface-0, #ffffff);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
 .tab-link {
@@ -179,12 +187,13 @@ function saveLocally() {
   padding: 1.5rem;
 }
 
-/* Views that manage their own layout get no padding */
+/* Views that manage their own layout get no padding and explicit height */
 .tab-content:has(> .landscape),
 .tab-content:has(> .flows),
 .tab-content:has(> .components) {
   padding: 0;
   overflow: hidden;
+  height: calc(100vh - var(--header-h) - var(--tabs-h));
 }
 
 .not-found {

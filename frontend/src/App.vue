@@ -49,7 +49,7 @@ const handleLogoError = (event: Event) => {
 .app-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
 }
 
 
@@ -76,9 +76,6 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
   height: 70px;
   padding: 0 2rem;
   background-color: #efefef;
@@ -131,7 +128,5 @@ header {
 
 .content {
   flex: 1;
-  min-height: 0;
-  overflow: hidden;
 }
 </style>
