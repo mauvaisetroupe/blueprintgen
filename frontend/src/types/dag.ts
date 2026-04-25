@@ -126,14 +126,14 @@ export interface DagImportDraft {
 
 // Default categories based on the reference Mermaid example
 export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
-  { name: 'Users',            order: 1, showSubgraph: true,  isDefault: true, nodeShape: 'rounded'  },
-  { name: 'Frontends',        order: 2, showSubgraph: true,  isDefault: true },
-  { name: 'Backends',         order: 3, showSubgraph: true,  isDefault: true },
-  { name: 'Brokers',          order: 4, showSubgraph: true,  isDefault: true },
-  { name: 'Batchs',           order: 5, showSubgraph: true,  isDefault: true },
-  { name: 'Data Storage',     order: 6, showSubgraph: true,  isDefault: true, nodeShape: 'cylinder' },
-  { name: 'Analytics',        order: 7, showSubgraph: true,  isDefault: true },
-  { name: 'External Systems', order: 8, showSubgraph: true,  isDefault: true, nodeShape: 'rounded'  },
+  { name: 'Users',            order: 1, showSubgraph: true,  nodeShape: 'rounded'  },
+  { name: 'Frontends',        order: 2, showSubgraph: true  },
+  { name: 'Backends',         order: 3, showSubgraph: true  },
+  { name: 'Brokers',          order: 4, showSubgraph: true  },
+  { name: 'Batchs',           order: 5, showSubgraph: true  },
+  { name: 'Data Storage',     order: 6, showSubgraph: true,  nodeShape: 'cylinder' },
+  { name: 'Analytics',        order: 7, showSubgraph: true  },
+  { name: 'External Systems', order: 8, showSubgraph: true,  nodeShape: 'rounded'  },
 ]
 
 // Noms des catégories par défaut (case-insensitive) — pour dériver isDefault à la volée
