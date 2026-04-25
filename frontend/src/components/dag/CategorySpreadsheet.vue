@@ -6,6 +6,7 @@ import { DEFAULT_CATEGORY_NAMES } from '@/types/dag'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import Popover from 'primevue/popover'
 
 const props = defineProps<{
   dagId: string
@@ -16,6 +17,30 @@ const props = defineProps<{
 const store = useDagStore()
 
 const isDefault = computed(() => DEFAULT_CATEGORY_NAMES.has(props.category.name.toLowerCase()))
+
+// --- Move component to another category ---
+const movePopover = ref()
+const movingComponent = ref<Component | null>(null)
+
+const otherCategories = computed(() => {
+  const dag = store.getDag(props.dagId)
+  if (!dag) return []
+  return dag.categories
+    .filter((c) => c.id !== props.category.id)
+    .sort((a, b) => a.order - b.order)
+})
+
+function openMovePopover(event: Event, component: Component) {
+  movingComponent.value = component
+  movePopover.value.toggle(event)
+}
+
+function moveToCategory(targetCategoryId: string) {
+  if (!movingComponent.value) return
+  store.updateComponent(props.dagId, movingComponent.value.id, { categoryId: targetCategoryId })
+  movePopover.value.hide()
+  movingComponent.value = null
+}
 
 // --- Category name editing ---
 const editingName = ref(false)
@@ -187,6 +212,14 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
           </td>
           <td class="col-actions">
             <Button
+              icon="pi pi-arrow-right-arrow-left"
+              size="small"
+              text
+              severity="secondary"
+              title="Move to another category"
+              @click="openMovePopover($event, component)"
+            />
+            <Button
               icon="pi pi-times"
               size="small"
               text
@@ -206,6 +239,21 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
       @click="addRow()"
     />
   </div>
+
+  <Popover ref="movePopover">
+    <div class="move-menu">
+      <p class="move-menu-label">Move to…</p>
+      <button
+        v-for="cat in otherCategories"
+        :key="cat.id"
+        class="move-menu-item"
+        @click="moveToCategory(cat.id)"
+      >
+        {{ cat.name }}
+      </button>
+      <p v-if="otherCategories.length === 0" class="move-menu-empty">No other categories.</p>
+    </div>
+  </Popover>
 </template>
 
 <style scoped>
@@ -289,7 +337,45 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
 .col-name    { width: 25%; }
 .col-id      { width: 20%; }
 .col-desc    { width: 50%; }
-.col-actions { width: 40px; }
+.col-actions { width: 72px; white-space: nowrap; }
+
+.move-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+}
+
+.move-menu-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--p-text-muted-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.4rem;
+}
+
+.move-menu-item {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: inherit;
+}
+
+.move-menu-item:hover {
+  background: var(--p-surface-100, #f4f4f5);
+}
+
+.move-menu-empty {
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+  font-style: italic;
+  margin: 0;
+}
 
 .node-id {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
