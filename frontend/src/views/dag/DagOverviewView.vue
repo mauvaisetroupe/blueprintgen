@@ -146,8 +146,9 @@ const componentsDsl = computed(() => {
         </div>
       </template>
       <template v-else>
-        <p v-if="dag.description" class="dag-desc">{{ dag.description }}</p>
-        <Button label="Edit" icon="pi pi-pencil" size="small" severity="secondary" text @click="startEditDag" />
+        <span class="dag-name" @dblclick="startEditDag">{{ dag.name }}</span>
+        <Button icon="pi pi-pencil" size="small" text severity="secondary" class="edit-dag-btn" @click="startEditDag" />
+        <span v-if="dag.description" class="dag-desc">{{ dag.description }}</span>
       </template>
     </div>
 
@@ -253,17 +254,39 @@ const componentsDsl = computed(() => {
 
 .dag-info {
   margin-bottom: 0;
-  padding: 1rem 1.5rem;
+  padding: 0.5rem 1.5rem;
   display: flex;
-  align-items: flex-start;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.75rem;
   flex-shrink: 0;
   border-bottom: 1px solid var(--p-content-border-color);
+  min-height: 0;
+}
+
+.dag-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.edit-dag-btn {
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.dag-info:hover .edit-dag-btn {
+  opacity: 1;
 }
 
 .dag-desc {
   color: var(--p-text-muted-color);
+  font-size: 0.875rem;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .edit-form {

@@ -215,7 +215,7 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
   align-items: center;
   gap: 0.25rem;
   padding: 0.5rem 0.75rem;
-  background: var(--p-content-background);
+  background: var(--p-surface-200, #e4e4e7);
   border-bottom: 1px solid var(--p-content-border-color);
 }
 
