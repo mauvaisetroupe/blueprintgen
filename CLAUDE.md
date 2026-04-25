@@ -8,11 +8,8 @@ Le DAG représente possède les artefacts suivants:
 1. APPLICATION LANDSCAPE - un landscape avec les composants applicatifs avec une description fonctionnelle de ces composants
 2. APPLICATION FLOWS - les flux principaux entre les composants. Ces flus ne sont pas exhaustif, ni détaillés comme du BPMN, mais ils sont une sélection des diagrammes de séquences représentatifs servant à comprendre la dynamique entre les composants
 3. DATA - Un positionnement dans le landscape des grandes stockages de data (golden source et replicats)
-4. TECHNICAL LANDSCAPE - une landscape plus technique avec en plus du landscape fonctionnelle :
-   - une description technique des composants (langage, frameworks, contraintes techniques)
-   - les protocoles sur les fleches entre composants
-   - les zones réseaux où sont déployés les composants
-   - les appels vers des composants techniques (logging, monitoring...)
+4. TECHNICAL LANDSCAPE - une landscape plus technique avec en plus du landscape fonctionnelle
+
 
 Je dois collecter les informations nécessaires pour:
 1. pour comprendre la solutionn dans sa globalté
@@ -156,6 +153,46 @@ A voir comment faire cela, mais il faut rester simple
 #### Rendu
 - Donner la possibilité de passer de ELK au layout par défaut
 - laisser la possobilité, pour chaque catégorie, de grouper ou non dans un subgraph (quelque fois c'est plus esthétique avec ou sans regroupement)
+
+
+## Feature du LANDSCAPE TECHNIQUE
+
+### Ajout sur les composant applicatifs
+Le landscape technique doit être basé sur la lanscape applicatif, on aura les mêmes composants applicatifs. 
+
+Pour chaque composant applicatif, on doit avoir en plus :
+- une description technique des composants du landscape (langage, frameworks, contraintes techniques)
+- les zones réseaux où sont déployés les composants (un composant pourrait êrte déployés dans plusieurs zone, mais c'est sans doute un cas à traiter plus tard, mais à garder en tête pour la modélisation)
+
+### Ajouts de composant techniques
+
+Le landscape doit en plus introduire des composant non applicatifs, purement techniques (logging, monitoring...) qui doivent être inclus dans le landscape techniqe au même titre que les composants applicatifs
+Les composant techniques doivent être dans une zone prédéfinie qui s'appelle "technical services". Les flux vers ces composant techniques vont potentiellement venir surchargés le diagramme, peut être mettre des fleches depuis les zones réseaux ou les catégories (backend..) 
+
+### Les protocoles
+
+Il faut ajouter les protocoles sur les fleches du landscape (HTTPS, REST, etc..)
+Les protocol sur les fleches entre composants:
+- ou directement depuis le landscape
+- peut être ajouter sur les fleches des  diagrammes. Dans ce cas, il faut un systeme autosync pour les consolider au niveau landscape
+
+Il faut une liste de protocoles par défaut (en dur) qui pourrait etre simplment étendus
+
+### Les composants sécurité
+
+#### Authnetification et autorisation
+Il faudra pouvoir décrire le système d'authentification et d'autorization et pouvoir générer ce genre de diagramme, comme une-sous partie du landscape technique
+
+![alt text](authn_authz_v4.drawio.svg)
+
+#### API Gateway et WAF
+Il faut pouvoir le positionner entre deux composants qui communiques entre eux, donc sur un flow, qu'il soit manuel ou autosync
+
+#### File Transfer et Antivirus
+
+Il faut pouvoir le positionner entre deux composants qui communiques entre eux, donc sur un flow, qu'il soit manuel ou autosync. Uniquement si le protocole est de type FILE
+
+
 
 ## 5. Export
 
