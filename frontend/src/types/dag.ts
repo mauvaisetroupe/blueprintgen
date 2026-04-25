@@ -22,6 +22,10 @@ export interface Component {
   name: string
   description: string
   categoryId: string
+  // Champs techniques — renseignés dans le Technical Landscape, optionnels
+  technology?: string
+  framework?: string
+  constraints?: string
 }
 
 // --- Landscape section ---
@@ -31,20 +35,90 @@ export interface Landscape {
   autoSync?: boolean  // inclure les relations des flows dans le landscape
 }
 
+// --- Relations ---
+
+// source: 'manual' = explicitement ajouté par l'architecte (peut ne pas être couvert par une séquence)
+// undefined = legacy / avant l'introduction du champ
+export interface Relation {
+  id: string
+  fromComponentId: string
+  toComponentId: string
+  label?: string
+  protocol?: string   // protocole technique (HTTPS, REST, AMQP…) — distinct du label fonctionnel
+  source?: 'manual'
+}
+
 // --- Technical landscape section ---
 
-export interface TechnicalComponent {
-  componentId: string
-  technology?: string
-  framework?: string
-  constraints?: string
-  networkZone?: string
+export interface NetworkZone {
+  id: string
+  name: string
+  order: number
+}
+
+// Instance de déploiement d'un composant applicatif dans une zone réseau.
+// Un composant peut avoir plusieurs instances (ex: une en DMZ, une en Internal).
+export interface ComponentInstance {
+  id: string
+  componentId: string    // référence au composant applicatif logique
+  networkZoneId: string  // zone réseau de déploiement
+}
+
+// Service technique pur (logging, monitoring, SIEM…) — pas d'équivalent applicatif.
+// Les relations vers les TechnicalServices sont hors scope pour l'instant.
+export interface TechnicalService {
+  id: string
+  name: string
+  description?: string
+}
+
+// Relation technique entre deux instances de déploiement.
+export interface TechnicalRelation {
+  id: string
+  fromInstanceId: string
+  toInstanceId: string
+  protocol?: string
+  label?: string
 }
 
 export interface TechnicalLandscape {
-  components: TechnicalComponent[]
-  mermaidDsl?: string
+  networkZones: NetworkZone[]
+  instances: ComponentInstance[]
+  technicalRelations: TechnicalRelation[]
+  technicalServices: TechnicalService[]
+  useElk?: boolean
+  // Override indépendant du showSubgraph par catégorie (clé = categoryId)
+  // Si absent, fallback sur category.showSubgraph
+  categorySubgraphs?: Record<string, boolean>
+  // autoSync est partagé avec dag.landscape.autoSync — pas de valeur séparée ici
 }
+
+// Zones réseau prédéfinies (non renommables, dérivé à la volée comme pour les catégories)
+export interface DefaultNetworkZoneDef {
+  name: string
+  order: number
+  // Couleur appliquée aux pills de la vue et au subgraph du diagramme Mermaid
+  fill:   string   // fond (ex: '#f0fdf4')
+  stroke: string   // bordure (ex: '#86efac')
+}
+
+// Nuances de vert — du plus externe (pâle) au plus interne (soutenu)
+export const DEFAULT_NETWORK_ZONES: DefaultNetworkZoneDef[] = [
+  { name: 'Internet',         order: 1, fill: '#f0fdf4', stroke: '#86efac' },
+  { name: 'External',         order: 2, fill: '#dcfce7', stroke: '#4ade80' },
+  { name: 'DMZ',              order: 3, fill: '#bbf7d0', stroke: '#22c55e' },
+  { name: 'Internal',         order: 4, fill: '#a7f3d0', stroke: '#059669' },
+  { name: 'Managed Services', order: 5, fill: '#6ee7b7', stroke: '#047857' },
+]
+
+export const DEFAULT_ZONE_NAMES = new Set<string>(
+  DEFAULT_NETWORK_ZONES.map((z) => z.name.toLowerCase()),
+)
+
+// Lookup nom → couleurs (case-insensitive)
+export const DEFAULT_ZONE_COLORS = new Map<string, { fill: string; stroke: string }>(
+  DEFAULT_NETWORK_ZONES.map((z) => [z.name.toLowerCase(), { fill: z.fill, stroke: z.stroke }]),
+)
 
 // --- Application flows section ---
 
@@ -65,18 +139,6 @@ export interface ApplicationFlow {
   steps: FlowStep[]
   mermaidDsl?: string
   viewOptions?: FlowsViewOptions
-}
-
-// --- Relations ---
-
-// source: 'manual' = explicitement ajouté par l'architecte (peut ne pas être couvert par une séquence)
-// undefined = legacy / avant l'introduction du champ
-export interface Relation {
-  id: string
-  fromComponentId: string
-  toComponentId: string
-  label?: string
-  source?: 'manual'
 }
 
 // --- Flows view options ---

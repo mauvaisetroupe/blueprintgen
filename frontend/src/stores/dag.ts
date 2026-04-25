@@ -1,11 +1,28 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, DEFAULT_CATEGORIES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
 function generateId(): string {
   return crypto.randomUUID()
+}
+
+// Migration défensive : convertit l'ancien format TechnicalLandscape vers le nouveau
+function migrateTechnicalLandscape(tl: any) {
+  // Zones de base — migration additive : on ajoute les nouvelles zones par défaut si absentes
+  const existingZones: NetworkZone[] = tl?.networkZones ?? []
+  for (const def of DEFAULT_NETWORK_ZONES) {
+    const alreadyExists = existingZones.some((z) => z.name.toLowerCase() === def.name.toLowerCase())
+    if (!alreadyExists) existingZones.push({ id: generateId(), name: def.name, order: def.order })
+  }
+  return {
+    networkZones:       existingZones,
+    instances:          tl?.instances          ?? [],
+    technicalRelations: tl?.technicalRelations ?? [],
+    technicalServices:  tl?.technicalServices  ?? [],
+    useElk:             tl?.useElk,
+  }
 }
 
 function now(): string {
@@ -34,7 +51,12 @@ export const useDagStore = defineStore(
         components: [],
         relations: [],
         landscape: {},
-        technicalLandscape: { components: [] },
+        technicalLandscape: {
+          networkZones:       DEFAULT_NETWORK_ZONES.map((z) => ({ ...z, id: generateId() })),
+          instances:          [],
+          technicalRelations: [],
+          technicalServices:  [],
+        },
         applicationFlows: [],
       }
       dags.value.push(dag)
@@ -71,7 +93,7 @@ export const useDagStore = defineStore(
         applicationFlows:   data.applicationFlows ?? [],
         categories:         data.categories         ?? [],
         components:         data.components         ?? [],
-        technicalLandscape: data.technicalLandscape ?? { components: [] },
+        technicalLandscape: migrateTechnicalLandscape(data.technicalLandscape),
       }
       dags.value.push(dag)
       return dag
@@ -160,7 +182,12 @@ export const useDagStore = defineStore(
         components,
         relations: [],
         landscape: {},
-        technicalLandscape: { components: [] },
+        technicalLandscape: {
+          networkZones:       DEFAULT_NETWORK_ZONES.map((z) => ({ ...z, id: generateId() })),
+          instances:          [],
+          technicalRelations: [],
+          technicalServices:  [],
+        },
         applicationFlows: [],
       }
       dags.value.push(dag)
@@ -169,8 +196,12 @@ export const useDagStore = defineStore(
 
     function getDag(id: string): Dag | undefined {
       const dag = dags.value.find((d) => d.id === id)
-      // Migrate DAGs created before new fields were added
-      if (dag && !dag.relations) dag.relations = []
+      if (!dag) return undefined
+      // Migrations défensives pour les DAGs créés avant les nouveaux champs
+      if (!dag.relations) dag.relations = []
+      if (!dag.technicalLandscape?.networkZones) {
+        dag.technicalLandscape = migrateTechnicalLandscape(dag.technicalLandscape)
+      }
       return dag
     }
 
@@ -395,6 +426,102 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    // --- Network Zones ---
+
+    function addNetworkZone(dagId: string, name: string): NetworkZone {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const zone: NetworkZone = {
+        id:    generateId(),
+        name,
+        order: dag.technicalLandscape.networkZones.length + 1,
+      }
+      dag.technicalLandscape.networkZones.push(zone)
+      dag.updatedAt = now()
+      return zone
+    }
+
+    function deleteNetworkZone(dagId: string, zoneId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.networkZones = dag.technicalLandscape.networkZones.filter((z) => z.id !== zoneId)
+      // Supprimer les instances liées à cette zone
+      const removedInstanceIds = dag.technicalLandscape.instances
+        .filter((i) => i.networkZoneId === zoneId)
+        .map((i) => i.id)
+      dag.technicalLandscape.instances = dag.technicalLandscape.instances.filter((i) => i.networkZoneId !== zoneId)
+      // Supprimer les relations techniques liées à ces instances
+      dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter(
+        (r) => !removedInstanceIds.includes(r.fromInstanceId) && !removedInstanceIds.includes(r.toInstanceId),
+      )
+      dag.updatedAt = now()
+    }
+
+    // --- Component Instances ---
+
+    /**
+     * Assigne un composant à une zone réseau.
+     * Si une instance existe déjà pour ce couple (componentId, zoneId), retourne l'existante.
+     */
+    function assignZone(dagId: string, componentId: string, networkZoneId: string): ComponentInstance {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const existing = dag.technicalLandscape.instances.find(
+        (i) => i.componentId === componentId && i.networkZoneId === networkZoneId,
+      )
+      if (existing) return existing
+      const instance: ComponentInstance = { id: generateId(), componentId, networkZoneId }
+      dag.technicalLandscape.instances.push(instance)
+      dag.updatedAt = now()
+      return instance
+    }
+
+    function removeZoneAssignment(dagId: string, instanceId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.instances = dag.technicalLandscape.instances.filter((i) => i.id !== instanceId)
+      dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter(
+        (r) => r.fromInstanceId !== instanceId && r.toInstanceId !== instanceId,
+      )
+      dag.updatedAt = now()
+    }
+
+    // --- Technical Relations ---
+
+    function addTechnicalRelation(dagId: string, fromInstanceId: string, toInstanceId: string, protocol?: string, label?: string): TechnicalRelation {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const relation: TechnicalRelation = { id: generateId(), fromInstanceId, toInstanceId, protocol, label }
+      dag.technicalLandscape.technicalRelations.push(relation)
+      dag.updatedAt = now()
+      return relation
+    }
+
+    function deleteTechnicalRelation(dagId: string, relationId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter((r) => r.id !== relationId)
+      dag.updatedAt = now()
+    }
+
+    // --- Technical Services ---
+
+    function addTechnicalService(dagId: string, name: string, description?: string): TechnicalService {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const service: TechnicalService = { id: generateId(), name, description }
+      dag.technicalLandscape.technicalServices.push(service)
+      dag.updatedAt = now()
+      return service
+    }
+
+    function deleteTechnicalService(dagId: string, serviceId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.technicalServices = dag.technicalLandscape.technicalServices.filter((s) => s.id !== serviceId)
+      dag.updatedAt = now()
+    }
+
     function setLandscapeUseElk(dagId: string, useElk: boolean) {
       const dag = getDag(dagId)
       if (!dag) return
@@ -408,6 +535,22 @@ export const useDagStore = defineStore(
       dag.landscape.autoSync = autoSync
       dag.updatedAt = now()
     }
+
+    function setTechnicalCategorySubgraph(dagId: string, categoryId: string, show: boolean) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      if (!dag.technicalLandscape.categorySubgraphs) dag.technicalLandscape.categorySubgraphs = {}
+      dag.technicalLandscape.categorySubgraphs[categoryId] = show
+      dag.updatedAt = now()
+    }
+
+    function setTechnicalLandscapeUseElk(dagId: string, useElk: boolean) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.useElk = useElk
+      dag.updatedAt = now()
+    }
+
 
     /** Remplace toutes les relations manuelles du landscape par celles parsées depuis l'éditeur DSL. */
     function replaceManualRelations(
@@ -451,8 +594,18 @@ export const useDagStore = defineStore(
       addFlow,
       updateFlow,
       deleteFlow,
-      dslEditPreference, 
+      dslEditPreference,
       setDslEditPreference,
+      addNetworkZone,
+      deleteNetworkZone,
+      assignZone,
+      removeZoneAssignment,
+      addTechnicalRelation,
+      deleteTechnicalRelation,
+      addTechnicalService,
+      deleteTechnicalService,
+      setTechnicalLandscapeUseElk,
+      setTechnicalCategorySubgraph,
     }
   },
   {

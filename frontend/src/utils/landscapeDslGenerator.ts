@@ -21,6 +21,10 @@ function validComponentIds(dag: Dag): Set<string> {
   return new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
 }
 
+function sanitizeLabel(label: string): string {
+  return label.replace(/[()[\]{}"]/g, '').trim()
+}
+
 function relationLine(
   dag: Dag,
   fromId: string,
@@ -32,8 +36,9 @@ function relationLine(
   const to   = dag.components.find((c) => c.id === toId)!
   const f = toNodeId(from.name)
   const t = toNodeId(to.name)
-  return label?.trim()
-    ? `${indent}${f} -->|${label.trim()}| ${t}`
+  const safe = label ? sanitizeLabel(label) : ''
+  return safe
+    ? `${indent}${f} -->|${safe}| ${t}`
     : `${indent}${f} --> ${t}`
 }
 
