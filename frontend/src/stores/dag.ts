@@ -25,10 +25,22 @@ function migrateTechnicalLandscape(tl: any) {
     return inst
   })
 
+  // Migration des TechnicalRelations : ajout de fromComponentId/toComponentId si absents
+  const technicalRelations: TechnicalRelation[] = (tl?.technicalRelations ?? []).map((tr: any) => {
+    if (tr.fromComponentId && tr.toComponentId) return tr
+    const fromInst = instances.find((i) => i.id === tr.fromInstanceId)
+    const toInst   = instances.find((i) => i.id === tr.toInstanceId)
+    return {
+      ...tr,
+      fromComponentId: fromInst?.componentId ?? '',
+      toComponentId:   toInst?.componentId   ?? '',
+    }
+  })
+
   return {
     customNetworkZones: customZones,
     instances,
-    technicalRelations: tl?.technicalRelations ?? [],
+    technicalRelations,
     technicalServices:  tl?.technicalServices  ?? [],
     useElk:             tl?.useElk,
     categorySubgraphs:  tl?.categorySubgraphs,
@@ -389,9 +401,13 @@ export const useDagStore = defineStore(
       const dag = getDag(dagId)
       if (!dag) return
       dag.components = dag.components.filter((c) => c.id !== componentId)
-      // Remove relations involving this component
+      // Cascade : supprimer les relations logiques impliquant ce composant
       dag.relations = dag.relations.filter(
         (r) => r.fromComponentId !== componentId && r.toComponentId !== componentId,
+      )
+      // Cascade : supprimer les TechnicalRelations impliquant ce composant
+      dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter(
+        (tr) => tr.fromComponentId !== componentId && tr.toComponentId !== componentId,
       )
       dag.updatedAt = now()
     }
@@ -425,6 +441,13 @@ export const useDagStore = defineStore(
     function deleteRelation(dagId: string, relationId: string) {
       const dag = getDag(dagId)
       if (!dag) return
+      const rel = dag.relations.find((r) => r.id === relationId)
+      if (rel) {
+        // Cascade : supprimer les TechnicalRelations qui instanciaient cette relation logique
+        dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter(
+          (tr) => !(tr.fromComponentId === rel.fromComponentId && tr.toComponentId === rel.toComponentId),
+        )
+      }
       dag.relations = dag.relations.filter((r) => r.id !== relationId)
       dag.updatedAt = now()
     }
@@ -609,13 +632,30 @@ export const useDagStore = defineStore(
 
     // --- Technical Relations ---
 
-    function addTechnicalRelation(dagId: string, fromInstanceId: string, toInstanceId: string, protocol?: string, label?: string): TechnicalRelation {
+    function addTechnicalRelation(
+      dagId: string,
+      fromComponentId: string,
+      toComponentId: string,
+      fromInstanceId: string,
+      toInstanceId: string,
+      protocol?: string,
+      label?: string,
+    ): TechnicalRelation {
       const dag = getDag(dagId)
       if (!dag) throw new Error(`DAG ${dagId} not found`)
-      const relation: TechnicalRelation = { id: generateId(), fromInstanceId, toInstanceId, protocol, label }
+      const relation: TechnicalRelation = { id: generateId(), fromComponentId, toComponentId, fromInstanceId, toInstanceId, protocol, label }
       dag.technicalLandscape.technicalRelations.push(relation)
       dag.updatedAt = now()
       return relation
+    }
+
+    function updateTechnicalRelation(dagId: string, relationId: string, patch: Partial<Pick<TechnicalRelation, 'protocol' | 'label'>>) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      const rel = dag.technicalLandscape.technicalRelations.find((r) => r.id === relationId)
+      if (!rel) return
+      Object.assign(rel, patch)
+      dag.updatedAt = now()
     }
 
     function deleteTechnicalRelation(dagId: string, relationId: string) {
@@ -723,6 +763,7 @@ export const useDagStore = defineStore(
       assignZone,
       removeZoneAssignment,
       addTechnicalRelation,
+      updateTechnicalRelation,
       deleteTechnicalRelation,
       addTechnicalService,
       deleteTechnicalService,

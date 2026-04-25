@@ -102,19 +102,48 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     }
   }
 
+  // Index des TechnicalRelations par clé logique
+  const techRelsByKey = new Map<string, typeof tl.technicalRelations>()
+  for (const tr of tl.technicalRelations) {
+    const key = `${tr.fromComponentId}->${tr.toComponentId}`
+    if (!techRelsByKey.has(key)) techRelsByKey.set(key, [])
+    techRelsByKey.get(key)!.push(tr)
+  }
+
+  // Index des instances par ID
+  const instanceById = new Map(tl.instances.map((i) => [i.id, i]))
+
   for (const rel of relationsToRender) {
     if (!validIds.has(rel.fromComponentId) || !validIds.has(rel.toComponentId)) continue
 
     const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)!
     const toComp   = dag.components.find((c) => c.id === rel.toComponentId)!
-    const fromInsts = instancesByComponent.get(rel.fromComponentId) ?? []
-    const toInsts   = instancesByComponent.get(rel.toComponentId)   ?? []
+    const key      = `${rel.fromComponentId}->${rel.toComponentId}`
+    const techRels = techRelsByKey.get(key)
 
-    const fromId = resolveRelationNodeId(fromComp.name, fromInsts, zones)
-    const toId   = resolveRelationNodeId(toComp.name, toInsts, zones)
-
-    const edgeLabel = rel.protocol
-    lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
+    if (techRels && techRels.length > 0) {
+      // Rendu par instance physique
+      for (const tr of techRels) {
+        const fromInst = instanceById.get(tr.fromInstanceId)
+        const toInst   = instanceById.get(tr.toInstanceId)
+        const fromZone = fromInst ? zones.find((z) => z.id === fromInst.networkZoneId) : undefined
+        const toZone   = toInst   ? zones.find((z) => z.id === toInst.networkZoneId)   : undefined
+        const fromIsMulti = (instancesByComponent.get(rel.fromComponentId)?.length ?? 0) > 1
+        const toIsMulti   = (instancesByComponent.get(rel.toComponentId)?.length   ?? 0) > 1
+        const fromId = fromZone ? nodeIdForInstance(fromComp.name, fromZone.name, fromIsMulti) : toNodeId(fromComp.name)
+        const toId   = toZone   ? nodeIdForInstance(toComp.name,   toZone.name,   toIsMulti)   : toNodeId(toComp.name)
+        const edgeLabel = tr.protocol ?? rel.protocol
+        lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
+      }
+    } else {
+      // Fallback : relation logique sans instance physique définie
+      const fromInsts = instancesByComponent.get(rel.fromComponentId) ?? []
+      const toInsts   = instancesByComponent.get(rel.toComponentId)   ?? []
+      const fromId = resolveRelationNodeId(fromComp.name, fromInsts, zones)
+      const toId   = resolveRelationNodeId(toComp.name, toInsts, zones)
+      const edgeLabel = rel.protocol
+      lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
+    }
   }
 
   // Styles des zones : fond coloré + bordure pointillée

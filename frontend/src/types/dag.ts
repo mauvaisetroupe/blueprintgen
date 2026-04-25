@@ -74,10 +74,13 @@ export interface TechnicalService {
 }
 
 // Relation technique entre deux instances de déploiement.
+// Instanciation physique d'une relation logique (même pattern que ComponentInstance / Component).
 export interface TechnicalRelation {
   id: string
-  fromInstanceId: string
-  toInstanceId: string
+  fromComponentId: string   // référence à la relation logique parente (fromComponentId)
+  toComponentId: string     // référence à la relation logique parente (toComponentId)
+  fromInstanceId: string    // instance physique (zone) du composant source
+  toInstanceId: string      // instance physique (zone) du composant cible
   protocol?: string
   label?: string
 }
