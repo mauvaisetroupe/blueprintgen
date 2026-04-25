@@ -649,7 +649,7 @@ export const useDagStore = defineStore(
       return relation
     }
 
-    function updateTechnicalRelation(dagId: string, relationId: string, patch: Partial<Pick<TechnicalRelation, 'protocol' | 'label'>>) {
+    function updateTechnicalRelation(dagId: string, relationId: string, patch: Partial<Pick<TechnicalRelation, 'protocol' | 'label' | 'fromInstanceId' | 'toInstanceId'>>) {
       const dag = getDag(dagId)
       if (!dag) return
       const rel = dag.technicalLandscape.technicalRelations.find((r) => r.id === relationId)

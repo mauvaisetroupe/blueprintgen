@@ -205,6 +205,24 @@ function cancelAddRelation() {
   addingRelation.value = null
 }
 
+// Auto-matérialise la première TechnicalRelation quand les deux côtés d'une relation logique
+// ont au moins une instance assignée. Ne se déclenche que sur les changements structurels
+// (ajout d'instance ou de relation), pas sur les suppressions de TechnicalRelations.
+watch(
+  [() => tl.value?.instances, () => dag.value?.relations?.length],
+  () => {
+    if (!dag.value) return
+    for (const lr of logicalRelations.value) {
+      const fromInsts = instancesFor(lr.fromComponentId)
+      const toInsts   = instancesFor(lr.toComponentId)
+      if (fromInsts.length === 0 || toInsts.length === 0) continue
+      if (technicalRelationsFor(lr.fromComponentId, lr.toComponentId).length > 0) continue
+      store.addTechnicalRelation(dag.value.id, lr.fromComponentId, lr.toComponentId, fromInsts[0].id, toInsts[0].id)
+    }
+  },
+  { immediate: true },
+)
+
 function deletePhysicalRelation(relId: string) {
   if (!dag.value) return
   store.deleteTechnicalRelation(dag.value.id, relId)
@@ -367,7 +385,7 @@ async function copyMermaid() {
           </p>
 
           <div v-for="lr in logicalRelations" :key="`${lr.fromComponentId}->${lr.toComponentId}`" class="rel-block">
-            <!-- En-tête : noms des composants logiques + badge + bouton ajout (multi-zone) -->
+            <!-- En-tête : noms logiques + badge + bouton ajout (multi-zone uniquement) -->
             <div class="rel-header">
               <span class="rel-comp">{{ compName(lr.fromComponentId) }}</span>
               <span class="rel-arrow">→</span>
@@ -379,78 +397,60 @@ async function copyMermaid() {
                 @click="startAddRelation(lr.fromComponentId, lr.toComponentId)" />
             </div>
 
-            <!-- Cas simple : 1 instance de chaque côté -->
-            <template v-if="!isMultiZone(lr.fromComponentId, lr.toComponentId) && instancesFor(lr.fromComponentId).length === 1 && instancesFor(lr.toComponentId).length === 1">
-              <div class="rel-row">
-                <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.fromComponentId)[0].networkZoneId))">
-                  {{ zoneName(instancesFor(lr.fromComponentId)[0].networkZoneId) }}
-                </span>
-                <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-                <span class="rel-arrow-sm">→</span>
-                <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.toComponentId)[0].networkZoneId))">
-                  {{ zoneName(instancesFor(lr.toComponentId)[0].networkZoneId) }}
-                </span>
-                <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-                <template v-if="technicalRelationsFor(lr.fromComponentId, lr.toComponentId).length === 0">
-                  <input class="cell-input protocol-input"
-                    :placeholder="lr.protocol ?? 'Protocol'"
-                    @change="store.addTechnicalRelation(dag!.id, lr.fromComponentId, lr.toComponentId,
-                      instancesFor(lr.fromComponentId)[0].id, instancesFor(lr.toComponentId)[0].id,
-                      ($event.target as HTMLInputElement).value.trim() || undefined)" />
-                </template>
-                <template v-else>
-                  <input class="cell-input protocol-input"
-                    :value="technicalRelationsFor(lr.fromComponentId, lr.toComponentId)[0].protocol ?? ''"
-                    :placeholder="lr.protocol ?? 'Protocol'"
-                    @change="updateProtocol(technicalRelationsFor(lr.fromComponentId, lr.toComponentId)[0].id,
-                      ($event.target as HTMLInputElement).value)" />
-                </template>
-                <!-- colonne action vide pour conserver l'alignement -->
-                <span />
-              </div>
-            </template>
-
-            <!-- Cas multi-zone : sous-lignes par instance physique -->
-            <template v-if="isMultiZone(lr.fromComponentId, lr.toComponentId)">
-              <div v-for="tr in technicalRelationsFor(lr.fromComponentId, lr.toComponentId)" :key="tr.id" class="rel-row">
-                <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? ''))">
-                  {{ zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? '') }}
-                </span>
-                <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-                <span class="rel-arrow-sm">→</span>
-                <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? ''))">
-                  {{ zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? '') }}
-                </span>
-                <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-                <input class="cell-input protocol-input"
-                  :value="tr.protocol ?? ''"
-                  :placeholder="lr.protocol ?? 'Protocol'"
-                  @change="updateProtocol(tr.id, ($event.target as HTMLInputElement).value)" />
-                <Button icon="pi pi-times" size="small" text severity="danger" @click="deletePhysicalRelation(tr.id)" />
-              </div>
-
-              <!-- Formulaire d'ajout inline -->
-              <div v-if="addingRelation?.fromComponentId === lr.fromComponentId && addingRelation?.toComponentId === lr.toComponentId" class="rel-add-form">
-                <select v-model="addingRelation.fromInstanceId" class="zone-select">
-                  <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">
-                    {{ zoneName(inst.networkZoneId) }}
-                  </option>
+            <!-- Une ligne par TechnicalRelation existante -->
+            <div v-for="tr in technicalRelationsFor(lr.fromComponentId, lr.toComponentId)" :key="tr.id" class="rel-row">
+              <!-- côté source : pill si 1 seule instance, select si plusieurs -->
+              <template v-if="instancesFor(lr.fromComponentId).length <= 1">
+                <span class="zone-pill">{{ zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? '') }}</span>
+              </template>
+              <template v-else>
+                <select :value="tr.fromInstanceId" class="zone-select"
+                  @change="store.updateTechnicalRelation(dag!.id, tr.id, { fromInstanceId: ($event.target as HTMLSelectElement).value })">
+                  <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
                 </select>
-                <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-                <span class="rel-arrow-sm">→</span>
-                <select v-model="addingRelation.toInstanceId" class="zone-select">
-                  <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">
-                    {{ zoneName(inst.networkZoneId) }}
-                  </option>
+              </template>
+              <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
+              <span class="rel-arrow-sm">→</span>
+              <!-- côté destination : pill si 1 seule instance, select si plusieurs -->
+              <template v-if="instancesFor(lr.toComponentId).length <= 1">
+                <span class="zone-pill">{{ zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? '') }}</span>
+              </template>
+              <template v-else>
+                <select :value="tr.toInstanceId" class="zone-select"
+                  @change="store.updateTechnicalRelation(dag!.id, tr.id, { toInstanceId: ($event.target as HTMLSelectElement).value })">
+                  <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
                 </select>
-                <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-                <input v-model="addingRelation.protocol" class="cell-input protocol-input" placeholder="Protocol" @keyup.enter="submitAddRelation" @keyup.escape="cancelAddRelation" />
-                <span class="rel-actions">
-                  <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
-                  <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
-                </span>
-              </div>
-            </template>
+              </template>
+              <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
+              <input class="cell-input protocol-input"
+                :value="tr.protocol ?? ''"
+                :placeholder="lr.protocol ?? 'Protocol'"
+                @change="updateProtocol(tr.id, ($event.target as HTMLInputElement).value)" />
+              <Button icon="pi pi-times" size="small" text severity="danger" @click="deletePhysicalRelation(tr.id)" />
+            </div>
+
+
+            <!-- Formulaire d'ajout inline (multi-zone) -->
+            <div v-if="addingRelation?.fromComponentId === lr.fromComponentId && addingRelation?.toComponentId === lr.toComponentId" class="rel-add-form">
+              <select v-model="addingRelation.fromInstanceId" class="zone-select">
+                <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">
+                  {{ zoneName(inst.networkZoneId) }}
+                </option>
+              </select>
+              <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
+              <span class="rel-arrow-sm">→</span>
+              <select v-model="addingRelation.toInstanceId" class="zone-select">
+                <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">
+                  {{ zoneName(inst.networkZoneId) }}
+                </option>
+              </select>
+              <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
+              <input v-model="addingRelation.protocol" class="cell-input protocol-input" placeholder="Protocol" @keyup.enter="submitAddRelation" @keyup.escape="cancelAddRelation" />
+              <span class="rel-actions">
+                <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
+                <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
+              </span>
+            </div>
           </div>
         </div>
 
@@ -731,7 +731,9 @@ async function copyMermaid() {
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
   border-radius: 20px;
-  border: 1px solid var(--p-content-border-color);
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #064e3b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -747,14 +749,16 @@ async function copyMermaid() {
 
 .zone-select {
   width: 100%;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-family: inherit;
-  padding: 0.2rem 0.3rem;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 4px;
-  background: var(--p-surface-0, #fff);
-  color: inherit;
+  padding: 0.15rem 1.2rem 0.15rem 0.5rem;
+  border: 1px solid #86efac;
+  border-radius: 20px;
+  background: #f0fdf4 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23059669'/%3E%3C/svg%3E") no-repeat right 0.45rem center;
+  color: #064e3b;
   cursor: pointer;
+  appearance: none;
+  text-align: left;
 }
 
 /* ── Diagram panel ── */
