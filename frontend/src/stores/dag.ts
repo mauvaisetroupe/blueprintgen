@@ -665,6 +665,16 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    function replaceTechnicalRelations(
+      dagId: string,
+      relations: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; protocol?: string }>,
+    ) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.technicalRelations = relations.map((r) => ({ id: generateId(), ...r }))
+      dag.updatedAt = now()
+    }
+
     // --- Technical Services ---
 
     function addTechnicalService(dagId: string, name: string, description?: string): TechnicalService {
@@ -765,6 +775,7 @@ export const useDagStore = defineStore(
       addTechnicalRelation,
       updateTechnicalRelation,
       deleteTechnicalRelation,
+      replaceTechnicalRelations,
       addTechnicalService,
       deleteTechnicalService,
       setTechnicalLandscapeUseElk,

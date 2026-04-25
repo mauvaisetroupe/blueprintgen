@@ -159,6 +159,236 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   return lines.join('\n')
 }
 
+/**
+ * Partie read-only du DSL (structure : frontmatter + zones + composants + styles).
+ * Utilisée comme header dans l'éditeur DSL.
+ */
+export function generateTechnicalLandscapeStructure(dag: Dag): string {
+  const tl = dag.technicalLandscape
+  const lines: string[] = []
+
+  const headerLines = ['---', 'config:', '    theme: neutral']
+  if (tl.useElk) headerLines.push('    layout: elk')
+  headerLines.push('---', '', 'flowchart TB')
+  lines.push(headerLines.join('\n'))
+
+  const instancesByComponent = new Map<string, typeof tl.instances>()
+  for (const inst of tl.instances) {
+    if (!instancesByComponent.has(inst.componentId)) instancesByComponent.set(inst.componentId, [])
+    instancesByComponent.get(inst.componentId)!.push(inst)
+  }
+
+  const unassigned = dag.components.filter(
+    (c) => c.name.trim() !== '' && !instancesByComponent.has(c.id),
+  )
+
+  const zones = allNetworkZones(tl).sort((a, b) => a.order - b.order)
+  const renderedZoneIds: string[] = []
+
+  for (const zone of zones) {
+    const componentsInZone = dag.components.filter(
+      (c) => c.name.trim() !== '' && tl.instances.some((i) => i.componentId === c.id && i.networkZoneId === zone.id),
+    )
+    if (componentsInZone.length === 0) continue
+
+    const zoneNodeId = toNodeId(zone.name)
+    lines.push(`  subgraph ${zoneNodeId} ["Zone - ${zone.name}"]`)
+
+    const sortedCategories = allCategories(dag).sort((a, b) => a.order - b.order)
+    for (const category of sortedCategories) {
+      const compsInCat = componentsInZone.filter((c) => c.categoryId === category.id)
+      if (compsInCat.length === 0) continue
+      const shape = DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase())
+      const showSubgraph = tl.categorySubgraphs?.[category.id] ?? category.showSubgraph
+
+      if (showSubgraph) {
+        lines.push(`    subgraph ${zoneNodeId}_${toNodeId(category.name)} ["${category.name}"]`)
+        for (const comp of compsInCat) {
+          const isMulti = (instancesByComponent.get(comp.id)?.length ?? 0) > 1
+          const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
+          lines.push(`      ${nodeId}${nodeLabel(comp, shape)}`)
+        }
+        lines.push('    end')
+      } else {
+        for (const comp of compsInCat) {
+          const isMulti = (instancesByComponent.get(comp.id)?.length ?? 0) > 1
+          const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
+          lines.push(`    ${nodeId}${nodeLabel(comp, shape)}`)
+        }
+      }
+    }
+    lines.push('  end')
+    renderedZoneIds.push(zoneNodeId)
+  }
+
+  if (unassigned.length > 0) {
+    lines.push('  subgraph unassigned ["Unassigned"]')
+    for (const comp of unassigned) {
+      const category = allCategories(dag).find((c) => c.id === comp.categoryId)
+      const shape = category ? DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase()) : undefined
+      lines.push(`    ${toNodeId(comp.name)}${nodeLabel(comp, shape)}`)
+    }
+    lines.push('  end')
+  }
+
+  for (const zoneNodeId of renderedZoneIds) {
+    const zone = zones.find((z) => toNodeId(z.name) === zoneNodeId)
+    if (!zone) continue
+    const colors = DEFAULT_ZONE_COLORS.get(zone.name.toLowerCase())
+    if (colors) {
+      lines.push(`  style ${zoneNodeId} fill:${colors.fill},stroke:${colors.stroke},stroke-dasharray:6 3,stroke-width:2px,color:#064e3b`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Partie éditable du DSL : uniquement les flèches (technical relations).
+ * Utilisée comme corps modifiable dans l'éditeur DSL.
+ */
+export function generateTechnicalRelationsBody(dag: Dag): string {
+  const tl = dag.technicalLandscape
+  const lines: string[] = []
+
+  const instancesByComponent = new Map<string, typeof tl.instances>()
+  for (const inst of tl.instances) {
+    if (!instancesByComponent.has(inst.componentId)) instancesByComponent.set(inst.componentId, [])
+    instancesByComponent.get(inst.componentId)!.push(inst)
+  }
+
+  const zones = allNetworkZones(tl).sort((a, b) => a.order - b.order)
+  const validIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
+  const manualKeys = new Set(dag.relations.map((r) => `${r.fromComponentId}->${r.toComponentId}`))
+  const relationsToRender = [...dag.relations]
+
+  if (dag.landscape.autoSync) {
+    for (const flow of dag.applicationFlows) {
+      for (const step of flow.steps.filter((s) => !s.isReturn)) {
+        const key = `${step.fromComponentId}->${step.toComponentId}`
+        if (manualKeys.has(key)) continue
+        if (!validIds.has(step.fromComponentId) || !validIds.has(step.toComponentId)) continue
+        manualKeys.add(key)
+        relationsToRender.push({
+          id: '', fromComponentId: step.fromComponentId, toComponentId: step.toComponentId,
+          protocol: step.protocol, label: step.label, source: 'manual',
+        })
+      }
+    }
+  }
+
+  const techRelsByKey = new Map<string, typeof tl.technicalRelations>()
+  for (const tr of tl.technicalRelations) {
+    const key = `${tr.fromComponentId}->${tr.toComponentId}`
+    if (!techRelsByKey.has(key)) techRelsByKey.set(key, [])
+    techRelsByKey.get(key)!.push(tr)
+  }
+
+  const instanceById = new Map(tl.instances.map((i) => [i.id, i]))
+
+  for (const rel of relationsToRender) {
+    if (!validIds.has(rel.fromComponentId) || !validIds.has(rel.toComponentId)) continue
+
+    const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)!
+    const toComp   = dag.components.find((c) => c.id === rel.toComponentId)!
+    const key      = `${rel.fromComponentId}->${rel.toComponentId}`
+    const techRels = techRelsByKey.get(key)
+
+    if (techRels && techRels.length > 0) {
+      for (const tr of techRels) {
+        const fromInst = instanceById.get(tr.fromInstanceId)
+        const toInst   = instanceById.get(tr.toInstanceId)
+        const fromZone = fromInst ? zones.find((z) => z.id === fromInst.networkZoneId) : undefined
+        const toZone   = toInst   ? zones.find((z) => z.id === toInst.networkZoneId)   : undefined
+        const fromIsMulti = (instancesByComponent.get(rel.fromComponentId)?.length ?? 0) > 1
+        const toIsMulti   = (instancesByComponent.get(rel.toComponentId)?.length   ?? 0) > 1
+        const fromId = fromZone ? nodeIdForInstance(fromComp.name, fromZone.name, fromIsMulti) : toNodeId(fromComp.name)
+        const toId   = toZone   ? nodeIdForInstance(toComp.name,   toZone.name,   toIsMulti)   : toNodeId(toComp.name)
+        const edgeLabel = tr.protocol ?? rel.protocol
+        lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
+      }
+    } else {
+      const fromInsts = instancesByComponent.get(rel.fromComponentId) ?? []
+      const toInsts   = instancesByComponent.get(rel.toComponentId)   ?? []
+      const fromId = resolveRelationNodeId(fromComp.name, fromInsts, zones)
+      const toId   = resolveRelationNodeId(toComp.name, toInsts, zones)
+      const edgeLabel = rel.protocol
+      lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Parse les flèches DSL et retourne des données de TechnicalRelation.
+ * Utilisé pour synchroniser le modèle depuis l'éditeur DSL.
+ */
+export function parseTechnicalRelationsBody(
+  body: string,
+  dag: Dag,
+): Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; protocol?: string }> {
+  const tl = dag.technicalLandscape
+  const zones = allNetworkZones(tl)
+  const result: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; protocol?: string }> = []
+
+  // Matches: nodeId --> nodeId  or  nodeId -->|label| nodeId
+  const arrowRe = /^\s*([\w]+)\s+-->\s*(?:\|([^|]*)\|\s*)?([\w]+)\s*(?:%%.*)?$/
+
+  for (const line of body.split('\n')) {
+    const m = line.match(arrowRe)
+    if (!m) continue
+    const fromNodeId = m[1]
+    const label      = m[2]
+    const toNodeId_  = m[3]
+    if (!fromNodeId || !toNodeId_) continue
+
+    const from = resolveNodeIdToInstance(fromNodeId, dag, zones)
+    const to   = resolveNodeIdToInstance(toNodeId_, dag, zones)
+    if (!from || !to) continue
+
+    result.push({
+      fromComponentId: from.compId,
+      toComponentId:   to.compId,
+      fromInstanceId:  from.instId,
+      toInstanceId:    to.instId,
+      protocol:        label?.trim() || undefined,
+    })
+  }
+
+  return result
+}
+
+function resolveNodeIdToInstance(
+  nodeId: string,
+  dag: Dag,
+  zones: { id: string; name: string }[],
+): { compId: string; instId: string } | null {
+  const tl = dag.technicalLandscape
+
+  // Multi-instance: nodeId ends with __<zoneNodeId>
+  for (const zone of zones) {
+    const suffix = `__${toNodeId(zone.name)}`
+    if (nodeId.endsWith(suffix)) {
+      const compNodeId = nodeId.slice(0, -suffix.length)
+      const comp = dag.components.find((c) => c.name.trim() !== '' && toNodeId(c.name) === compNodeId)
+      if (comp) {
+        const inst = tl.instances.find((i) => i.componentId === comp.id && i.networkZoneId === zone.id)
+        if (inst) return { compId: comp.id, instId: inst.id }
+      }
+    }
+  }
+
+  // Single-instance
+  const comp = dag.components.find((c) => c.name.trim() !== '' && toNodeId(c.name) === nodeId)
+  if (comp) {
+    const insts = tl.instances.filter((i) => i.componentId === comp.id)
+    if (insts.length > 0) return { compId: comp.id, instId: insts[0]!.id }
+  }
+
+  return null
+}
+
 // ID de nœud lisible : nom seul si 1 instance, nom__zone si multi-zone
 function nodeIdForInstance(compName: string, zoneName: string, isMulti: boolean): string {
   return isMulti ? `${toNodeId(compName)}__${toNodeId(zoneName)}` : toNodeId(compName)

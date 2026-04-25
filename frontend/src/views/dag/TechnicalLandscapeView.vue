@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { DEFAULT_ZONE_NAMES, DEFAULT_ZONE_COLORS, allNetworkZones, allCategories } from '@/types/dag'
 import type { ComponentInstance, TechnicalRelation } from '@/types/dag'
-import { generateTechnicalLandscapeDsl } from '@/utils/technicalLandscapeDslGenerator'
+import {
+  generateTechnicalLandscapeDsl,
+  generateTechnicalLandscapeStructure,
+  generateTechnicalRelationsBody,
+  parseTechnicalRelationsBody,
+} from '@/utils/technicalLandscapeDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
+import DslEditor from '@/components/DslEditor.vue'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import InputText from 'primevue/inputtext'
@@ -29,7 +35,90 @@ const activeTab = ref<Tab>('components')
 const useElk = ref(dag.value?.technicalLandscape.useElk ?? false)
 watch(useElk, (val) => { if (dag.value) store.setTechnicalLandscapeUseElk(dag.value.id, val) })
 
-// --- DSL ---
+// ── DSL edit mode (injecté depuis DagDetailLayout) ────────────────────────────
+const dslEdit = inject<Ref<boolean>>('dslEdit')!
+
+// Corps éditable des relations (mode DSL uniquement)
+const localRelationsBody = ref(dag.value ? generateTechnicalRelationsBody(dag.value) : '')
+
+// Header read-only : structure (zones + composants + styles)
+const dslReadOnlyHeader = computed(() => dag.value ? generateTechnicalLandscapeStructure(dag.value) : '')
+
+// Node IDs pour l'autocomplétion dans l'éditeur DSL
+const completionNames = computed(() => {
+  if (!dag.value) return []
+  const instances = dag.value.technicalLandscape.instances
+  const zones = allNetworkZones(dag.value.technicalLandscape)
+  const countByComp = new Map<string, number>()
+  for (const inst of instances) countByComp.set(inst.componentId, (countByComp.get(inst.componentId) ?? 0) + 1)
+  const names: string[] = []
+  for (const comp of dag.value.components.filter((c) => c.name.trim() !== '')) {
+    const count = countByComp.get(comp.id) ?? 0
+    if (count === 0) continue
+    if (count === 1) {
+      names.push(comp.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase())
+    } else {
+      for (const inst of instances.filter((i) => i.componentId === comp.id)) {
+        const zone = zones.find((z) => z.id === inst.networkZoneId)
+        if (zone) names.push(`${comp.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}__${zone.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`)
+      }
+    }
+  }
+  return names
+})
+
+// Validation DSL (mode éditeur)
+const syntaxError = ref<string | null>(null)
+const isValidating = ref(false)
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// DSL actif pour le rendu Mermaid
+const activeDsl = computed(() => {
+  if (!dag.value) return ''
+  if (dslEdit?.value && activeTab.value === 'relations') {
+    const parts = [dslReadOnlyHeader.value]
+    if (localRelationsBody.value.trim()) parts.push(localRelationsBody.value)
+    return parts.join('\n')
+  }
+  return generateTechnicalLandscapeDsl(dag.value)
+})
+
+watch(dslEdit, (mode) => {
+  if (mode && dag.value) {
+    localRelationsBody.value = generateTechnicalRelationsBody(dag.value)
+    syntaxError.value = null
+  } else {
+    syntaxError.value = null
+  }
+})
+
+async function runValidation() {
+  if (!dslEdit?.value || !dag.value) return
+  const fullCode = activeDsl.value
+  if (!fullCode.trim()) { syntaxError.value = null; return }
+  isValidating.value = true
+  syntaxError.value  = null
+  try {
+    await mermaid.parse(fullCode)
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : 'Invalid syntax'
+    syntaxError.value = raw.replace(/^Syntax error in text\s*\nmermaid version [\d.]+\s*\n?/i, '').trim() || 'Invalid syntax'
+  }
+  isValidating.value = false
+}
+
+function onRelationsChange(value: string) {
+  localRelationsBody.value = value
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    if (!dag.value) return
+    const parsed = parseTechnicalRelationsBody(value, dag.value)
+    store.replaceTechnicalRelations(dag.value.id, parsed)
+    runValidation()
+  }, 400)
+}
+
+// --- DSL (mode guidé uniquement, pour rétrocompatibilité) ---
 const dsl = computed(() => dag.value ? generateTechnicalLandscapeDsl(dag.value) : '')
 
 // --- Composants groupés par catégorie (tab Components) ---
@@ -253,8 +342,8 @@ const exportMenuItems = computed(() => [
 ])
 
 async function exportSvg(pptxMode: boolean) {
-  if (!dag.value || !dsl.value.trim()) return
-  const source = pptxMode ? injectHtmlLabelsFalse(dsl.value) : dsl.value
+  if (!dag.value || !activeDsl.value.trim()) return
+  const source = pptxMode ? injectHtmlLabelsFalse(activeDsl.value) : activeDsl.value
   const id = `export-tech-${Date.now()}`
   const { svg } = await mermaid.render(id, source)
   const processed = pptxMode ? inlineSvgStyles(svg) : svg
@@ -268,8 +357,8 @@ async function exportSvg(pptxMode: boolean) {
 }
 
 function exportMermaid() {
-  if (!dag.value || !dsl.value.trim()) return
-  const blob = new Blob([dsl.value], { type: 'text/plain' })
+  if (!dag.value || !activeDsl.value.trim()) return
+  const blob = new Blob([activeDsl.value], { type: 'text/plain' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
@@ -279,8 +368,8 @@ function exportMermaid() {
 }
 
 async function copyMermaid() {
-  if (!dsl.value.trim()) return
-  await navigator.clipboard.writeText(dsl.value)
+  if (!activeDsl.value.trim()) return
+  await navigator.clipboard.writeText(activeDsl.value)
 }
 </script>
 
@@ -305,8 +394,25 @@ async function copyMermaid() {
 
     <Splitter class="tech-splitter" state-key="technical-splitter" state-storage="local">
 
-      <!-- Panneau gauche : contenu du tab actif -->
-      <SplitterPanel :size="55" :min-size="30" class="tech-left-panel">
+      <!-- Panneau gauche : éditeur DSL (Relations + DSL Edit actif) ou tabs (mode guidé) -->
+      <SplitterPanel :size="55" :min-size="30" :class="dslEdit && activeTab === 'relations' ? 'tech-dsl-panel' : 'tech-left-panel'">
+
+        <!-- ── Mode DSL (uniquement sur l'onglet Relations) ── -->
+        <template v-if="dslEdit && activeTab === 'relations'">
+          <DslEditor
+            :model-value="localRelationsBody"
+            :read-only-header="dslReadOnlyHeader"
+            :completion-names="completionNames"
+            :validation-status="syntaxError ? 'syntax-error' : isValidating ? 'validating' : 'idle'"
+            @update:model-value="onRelationsChange"
+          />
+          <div v-if="syntaxError" class="dsl-error-bar">
+            <i class="pi pi-times-circle" /> {{ syntaxError }}
+          </div>
+        </template>
+
+        <!-- ── Mode guidé : contenu du tab actif ── -->
+        <template v-else>
 
         <!-- ── TAB : Components ── -->
         <div v-if="activeTab === 'components'" class="tech-sections">
@@ -464,6 +570,7 @@ async function copyMermaid() {
           <p class="empty-state coming-soon">Security (AuthN/AuthZ, API Gateway, WAF) — coming soon.</p>
         </div>
 
+        </template> <!-- end v-else (guided mode) -->
       </SplitterPanel>
 
       <!-- Panneau droit : diagramme -->
@@ -484,7 +591,7 @@ async function copyMermaid() {
           </div>
         </div>
         <div class="diagram-wrap">
-          <MermaidDiagram v-if="dsl" :code="dsl" />
+          <MermaidDiagram v-if="activeDsl" :code="activeDsl" />
           <p v-else class="empty-state">Add components and assign zones to see the diagram.</p>
         </div>
       </SplitterPanel>
@@ -568,7 +675,22 @@ async function copyMermaid() {
 .tech-splitter { flex: 1; min-height: 0; border: none !important; }
 
 .tech-left-panel { overflow-y: auto; padding: 0 !important; border-right: 1px solid var(--p-content-border-color); }
+.tech-dsl-panel  { overflow: hidden; padding: 0 !important; display: flex; flex-direction: column; border-right: 1px solid var(--p-content-border-color); }
 .tech-right-panel { overflow: auto; padding: 0 !important; display: flex; flex-direction: column; }
+
+.dsl-error-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-family: monospace;
+  padding: 0.4rem 0.75rem;
+  background: #fef2f2;
+  border-top: 1px solid #fca5a5;
+  color: #dc2626;
+  flex-shrink: 0;
+  white-space: pre-wrap;
+}
 
 /* ── Sections communes ── */
 .tech-sections {

@@ -190,7 +190,8 @@ function saveLocally() {
 /* Views that manage their own layout get no padding and explicit height */
 .tab-content:has(> .landscape),
 .tab-content:has(> .flows),
-.tab-content:has(> .components) {
+.tab-content:has(> .components),
+.tab-content:has(> .technical) {
   padding: 0;
   overflow: hidden;
   height: calc(100vh - var(--header-h) - var(--tabs-h));
