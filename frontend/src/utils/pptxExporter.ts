@@ -281,7 +281,7 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
   for (let i = 0; i < steps.length; i++) {
     const circle = CIRCLED_DIGITS[i] ?? `${i + 1}.`
     rows.push({
-      text: `${circle}  `,
+      text: `\u200B${circle}  `,
       options: { bold: true, color: COLOR_ACCENT, fontSize: 14 },
     })
     rows.push({
