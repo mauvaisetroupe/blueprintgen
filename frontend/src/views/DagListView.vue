@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { parseImportDsl } from '@/utils/importParser'
 import { parseDsl } from '@/utils/dslParser'
 import type { Dag } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Dialog from 'primevue/dialog'
@@ -162,7 +163,7 @@ function executeImport() {
         <template #content>
           <p class="dag-desc">{{ dag.description || '—' }}</p>
           <p class="dag-meta">
-            {{ dag.components.length }} component(s) · {{ dag.categories.length }} categories
+            {{ dag.components.length }} component(s) · {{ allCategories(dag).length }} categories
           </p>
         </template>
       </Card>

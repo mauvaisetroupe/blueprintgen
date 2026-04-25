@@ -2,6 +2,7 @@
 import { computed, ref, nextTick } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { ApplicationFlow, Dag, FlowStep } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import Button from 'primevue/button'
 
 const props = defineProps<{ dag: Dag; flow: ApplicationFlow }>()
@@ -10,7 +11,7 @@ const store = useDagStore()
 const steps = computed(() => [...props.flow.steps].sort((a, b) => a.order - b.order))
 
 const groupedComponents = computed(() => {
-  const sorted = [...props.dag.categories].sort((a, b) => a.order - b.order)
+  const sorted = allCategories(props.dag).sort((a, b) => a.order - b.order)
   return sorted
     .map((cat) => ({
       category: cat,

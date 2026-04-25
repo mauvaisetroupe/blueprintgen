@@ -2,6 +2,7 @@
 import { computed, ref, nextTick } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { Dag, Relation } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import Button from 'primevue/button'
 
 const props = defineProps<{ dag: Dag }>()
@@ -15,12 +16,12 @@ const componentOptions = computed(() =>
 function categoryName(componentId: string): string {
   const comp = props.dag.components.find((c) => c.id === componentId)
   if (!comp) return ''
-  return props.dag.categories.find((c) => c.id === comp.categoryId)?.name ?? ''
+  return allCategories(props.dag).find((c) => c.id === comp.categoryId)?.name ?? ''
 }
 
 // Group components by category for <optgroup>
 const groupedComponents = computed(() => {
-  const sorted = [...props.dag.categories].sort((a, b) => a.order - b.order)
+  const sorted = allCategories(props.dag).sort((a, b) => a.order - b.order)
   return sorted
     .map((cat) => ({
       category: cat,

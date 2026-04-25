@@ -11,6 +11,7 @@ import {
   parseRelationsBody,
   toNodeId,
 } from '@/utils/landscapeDslGenerator'
+import { allCategories } from '@/types/dag'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import { exportToDrawio } from '@/utils/drawioExporter'
@@ -169,8 +170,10 @@ const completionNames = computed(() =>
 // ── Subgraph toggles (guided + DSL) ──────────────────────────────────────────
 function toggleSubgraph(categoryId: string, value: boolean) {
   if (!dag.value) return
-  store.updateCategory(dag.value.id, categoryId, { showSubgraph: value })
+  store.setLandscapeCategorySubgraph(dag.value.id, categoryId, value)
 }
+
+const categories = computed(() => dag.value ? allCategories(dag.value).sort((a, b) => a.order - b.order) : [])
 
 const categoryIdsWithComponents = computed(() =>
   new Set(
@@ -289,14 +292,14 @@ async function copyMermaid() {
           <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
             <span class="subgraph-label">Subgraphs:</span>
             <label
-              v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+              v-for="cat in categories"
               v-show="categoryIdsWithComponents.has(cat.id)"
               :key="cat.id"
               class="toggle-label"
             >
               <input
                 type="checkbox"
-                :checked="cat.showSubgraph"
+                :checked="dag.landscape.categorySubgraphs?.[cat.id] ?? cat.showSubgraph"
                 @change="toggleSubgraph(cat.id, ($event.target as HTMLInputElement).checked)"
               />
               {{ cat.name }}
@@ -346,14 +349,14 @@ async function copyMermaid() {
           <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
             <span class="subgraph-label">Subgraphs:</span>
             <label
-              v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+              v-for="cat in categories"
               v-show="categoryIdsWithComponents.has(cat.id)"
               :key="cat.id"
               class="toggle-label"
             >
               <input
                 type="checkbox"
-                :checked="cat.showSubgraph"
+                :checked="dag.landscape.categorySubgraphs?.[cat.id] ?? cat.showSubgraph"
                 @change="toggleSubgraph(cat.id, ($event.target as HTMLInputElement).checked)"
               />
               {{ cat.name }}

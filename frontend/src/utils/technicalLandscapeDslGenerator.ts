@@ -1,5 +1,5 @@
 import type { Dag, NodeShape } from '@/types/dag'
-import { DEFAULT_SHAPE_BY_NAME, DEFAULT_ZONE_COLORS, allNetworkZones } from '@/types/dag'
+import { DEFAULT_SHAPE_BY_NAME, DEFAULT_ZONE_COLORS, allNetworkZones, allCategories } from '@/types/dag'
 import { toNodeId } from './landscapeDslGenerator'
 
 /**
@@ -44,7 +44,7 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     const zoneNodeId = toNodeId(zone.name)
     lines.push(`  subgraph ${zoneNodeId} ["${zone.name}"]`)
 
-    const sortedCategories = [...dag.categories].sort((a, b) => a.order - b.order)
+    const sortedCategories = allCategories(dag).sort((a, b) => a.order - b.order)
     for (const category of sortedCategories) {
       const compsInCat = componentsInZone.filter((c) => c.categoryId === category.id)
       if (compsInCat.length === 0) continue
@@ -75,7 +75,7 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   if (unassigned.length > 0) {
     lines.push('  subgraph unassigned ["Unassigned"]')
     for (const comp of unassigned) {
-      const category = dag.categories.find((c) => c.id === comp.categoryId)
+      const category = allCategories(dag).find((c) => c.id === comp.categoryId)
       const shape = category ? DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase()) : undefined
       lines.push(`    ${toNodeId(comp.name)}${nodeLabel(comp, shape)}`)
     }

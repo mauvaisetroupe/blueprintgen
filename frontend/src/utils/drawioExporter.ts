@@ -19,6 +19,7 @@
 
 import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import { generateLandscapeDsl, toNodeId } from './landscapeDslGenerator'
 import { injectHtmlLabelsFalse } from './svgInliner'
 import { buildActivityDsl } from './sequenceDslGenerator'
@@ -237,13 +238,14 @@ function buildDrawioXml(
 
   // Catégorie → bounds du cluster SVG
   const catCluster = new Map<string, ClusterBounds>()
-  for (const cat of dag.categories) {
+  const categories = allCategories(dag)
+  for (const cat of categories) {
     const cb = clusterBounds.get(cat.name)
     if (cb) catCluster.set(cat.id, cb)
   }
 
   // ── Swimlanes (catégories avec showSubgraph) ─────────────────────────────
-  const sortedCats = [...dag.categories].sort((a, b) => a.order - b.order)
+  const sortedCats = [...categories].sort((a, b) => a.order - b.order)
   for (const cat of sortedCats) {
     if (!cat.showSubgraph) continue
     const cb = catCluster.get(cat.id)
@@ -269,7 +271,7 @@ function buildDrawioXml(
     const nb = nodeBounds.get(nodeId)
     if (!nb) continue
 
-    const cat = dag.categories.find((c) => c.id === comp.categoryId)
+    const cat = categories.find((c) => c.id === comp.categoryId)
     const cb  = cat?.showSubgraph ? catCluster.get(comp.categoryId) : undefined
 
     let parentId = '1'
@@ -382,14 +384,15 @@ function buildActivityFlowDrawioXml(
   cells.push('<mxCell id="0" />')
   cells.push('<mxCell id="1" parent="0" />')
 
+  const flowCategories = allCategories(dag)
   const catCluster = new Map<string, ClusterBounds>()
-  for (const cat of dag.categories) {
+  for (const cat of flowCategories) {
     const cb = clusterBounds.get(cat.name)
     if (cb) catCluster.set(cat.id, cb)
   }
 
   // Containers pour les catégories actives dans ce flux
-  const sortedCats = [...dag.categories].sort((a, b) => a.order - b.order)
+  const sortedCats = [...flowCategories].sort((a, b) => a.order - b.order)
   for (const cat of sortedCats) {
     if (!cat.showSubgraph || !subgraphCategoryIds.has(cat.id)) continue
     const cb = catCluster.get(cat.id)
@@ -414,7 +417,7 @@ function buildActivityFlowDrawioXml(
     const nb = nodeBounds.get(toNodeId(comp.name))
     if (!nb) continue
 
-    const cat = dag.categories.find((c) => c.id === comp.categoryId)
+    const cat = flowCategories.find((c) => c.id === comp.categoryId)
     const inSubgraph = cat?.showSubgraph && subgraphCategoryIds.has(comp.categoryId)
     const cb = inSubgraph ? catCluster.get(comp.categoryId) : undefined
 

@@ -1,4 +1,5 @@
 import type { Dag } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import { parseDsl, type ParsedDsl } from './dslParser'
 
 export type IssueType = 'error' | 'warning'
@@ -27,7 +28,7 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
         type: 'warning',
         message: `Component "${node.label}" is not in the model — it will be created on sync`,
       })
-      if (node.subgraph && !dag.categories.find((c) => c.name === node.subgraph) && !reportedCategories.has(node.subgraph)) {
+      if (node.subgraph && !allCategories(dag).find((c) => c.name === node.subgraph) && !reportedCategories.has(node.subgraph)) {
         reportedCategories.add(node.subgraph)
         issues.push({
           type: 'warning',
@@ -38,7 +39,8 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
     }
 
     if (node.subgraph) {
-      const targetCategory = dag.categories.find((c) => c.name === node.subgraph)
+      const cats = allCategories(dag)
+      const targetCategory = cats.find((c) => c.name === node.subgraph)
       if (!targetCategory) {
         if (!reportedCategories.has(node.subgraph)) {
           reportedCategories.add(node.subgraph)
@@ -48,7 +50,7 @@ export function validateDslAgainstModel(dsl: string, dag: Dag): DslValidationRes
           })
         }
       } else {
-        const currentCategory = dag.categories.find((c) => c.id === component.categoryId)
+        const currentCategory = cats.find((c) => c.id === component.categoryId)
         if (component.categoryId !== targetCategory.id) {
           issues.push({
             type: 'warning',

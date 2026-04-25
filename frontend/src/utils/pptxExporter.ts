@@ -1,6 +1,7 @@
 import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
 import { buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse, styleCircledDigits } from './svgInliner'
@@ -259,7 +260,7 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
     ? buildActivityDsl(
         resolvedBody, dag,
         vo.useElk      ?? false,
-        new Set(vo.subgraphCategoryIds ?? dag.categories.map((c) => c.id)),
+        new Set(vo.subgraphCategoryIds ?? allCategories(dag).map((c) => c.id)),
         vo.showReturns ?? false,
       )
     : buildSequenceDsl(numberForwardArrows(resolvedBody), dag)

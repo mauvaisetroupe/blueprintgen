@@ -3,6 +3,7 @@ import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { generateComponentsBody } from '@/utils/landscapeDslGenerator'
+import { allCategories } from '@/types/dag'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import CategorySpreadsheet from '@/components/dag/CategorySpreadsheet.vue'
 import DslEditor from '@/components/DslEditor.vue'
@@ -19,10 +20,12 @@ const store = useDagStore()
 
 const dag = computed(() => store.getDag(route.params.id as string))
 
+const categories = computed(() => dag.value ? allCategories(dag.value).sort((a, b) => a.order - b.order) : [])
+
 const componentsByCategory = computed(() => {
   if (!dag.value) return {}
   return Object.fromEntries(
-    dag.value.categories.map((cat) => [
+    categories.value.map((cat) => [
       cat.id,
       dag.value!.components.filter((c) => c.categoryId === cat.id),
     ]),
@@ -161,14 +164,14 @@ const componentsDsl = computed(() => {
           </div>
 
           <CategorySpreadsheet
-            v-for="category in dag.categories.slice().sort((a, b) => a.order - b.order)"
+            v-for="category in categories"
             :key="category.id"
             :dag-id="dag.id"
             :category="category"
             :components="componentsByCategory[category.id] ?? []"
           />
 
-          <p v-if="dag.categories.length === 0" class="empty">No categories yet.</p>
+          <p v-if="categories.length === 0" class="empty">No categories yet.</p>
 
           <div v-if="addingCategory" class="add-category-form">
             <InputText

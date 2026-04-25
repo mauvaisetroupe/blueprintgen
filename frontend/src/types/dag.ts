@@ -32,7 +32,8 @@ export interface Component {
 
 export interface Landscape {
   useElk?: boolean
-  autoSync?: boolean  // inclure les relations des flows dans le landscape
+  autoSync?: boolean               // inclure les relations des flows dans le landscape
+  categorySubgraphs?: Record<string, boolean>  // override de showSubgraph par catégorie (clé = ID stable)
 }
 
 // --- Relations ---
@@ -176,7 +177,8 @@ export interface Dag {
   updatedAt: string
 
   // Shared pool — referenced by all sections
-  categories: Category[]
+  customCategories: Category[]       // catégories ajoutées par l'architecte ; les défauts sont dérivés à la volée
+  disabledCategoryIds?: string[]     // IDs stables des catégories par défaut désactivées pour ce DAG
   components: Component[]
   relations: Relation[]
 
@@ -225,3 +227,44 @@ export const DEFAULT_SHAPE_BY_NAME = new Map<string, NodeShape>(
     .filter((c) => c.nodeShape !== undefined)
     .map((c) => [c.name.toLowerCase(), c.nodeShape!]),
 )
+
+// ID stable dérivé du nom — utilisé pour les catégories par défaut (non stockées dans le DAG)
+export function defaultCategoryId(name: string): string {
+  return `cat__${name.toLowerCase().replace(/\s+/g, '_')}`
+}
+
+// Liste complète des catégories : defaults actifs (IDs stables) + catégories custom du DAG
+// Gère aussi l'ancien format (dag.categories stocké) pour la compatibilité descendante
+export function allCategories(dag: Dag): Category[] {
+  // Rétrocompatibilité : ancien format avec 'categories' stocké
+  const legacy = (dag as unknown as { categories?: Category[] }).categories
+  if (legacy !== undefined && !dag.customCategories) {
+    const defaultNames = new Set(DEFAULT_CATEGORIES.map((c) => c.name.toLowerCase()))
+    const customs = legacy.filter((c) => !defaultNames.has(c.name.toLowerCase()))
+    const disabled = new Set(
+      DEFAULT_CATEGORIES
+        .filter((def) => !legacy.some((c) => c.name.toLowerCase() === def.name.toLowerCase()))
+        .map((def) => defaultCategoryId(def.name)),
+    )
+    const defaults: Category[] = DEFAULT_CATEGORIES
+      .filter((c) => !disabled.has(defaultCategoryId(c.name)))
+      .map((c) => ({ id: defaultCategoryId(c.name), name: c.name, order: c.order, showSubgraph: c.showSubgraph }))
+    return [...defaults, ...customs.map((c, i) => ({ ...c, order: DEFAULT_CATEGORIES.length + i + 1 }))]
+  }
+
+  // Nouveau format
+  const disabled = new Set(dag.disabledCategoryIds ?? [])
+  const defaults: Category[] = DEFAULT_CATEGORIES
+    .filter((c) => !disabled.has(defaultCategoryId(c.name)))
+    .map((c) => ({
+      id:           defaultCategoryId(c.name),
+      name:         c.name,
+      order:        c.order,
+      showSubgraph: c.showSubgraph,
+    }))
+  const customs = (dag.customCategories ?? []).map((c, i) => ({
+    ...c,
+    order: DEFAULT_CATEGORIES.length + i + 1,
+  }))
+  return [...defaults, ...customs]
+}

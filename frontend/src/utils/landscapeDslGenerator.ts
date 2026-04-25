@@ -1,5 +1,5 @@
 import type { Dag, Component, NodeShape } from '@/types/dag'
-import { DEFAULT_SHAPE_BY_NAME } from '@/types/dag'
+import { DEFAULT_SHAPE_BY_NAME, allCategories } from '@/types/dag'
 
 // Converts a component name to a valid Mermaid node ID
 export function toNodeId(name: string): string {
@@ -73,7 +73,7 @@ export function generateLandscapeHeader(dag: Dag): string {
 /** Subgraphs + nodes uniquement — sans header ni flèches (zone read-only de l'éditeur DSL) */
 export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName: boolean): string {
   const lines: string[] = []
-  const sortedCategories = [...dag.categories].sort((a, b) => a.order - b.order)
+  const sortedCategories = allCategories(dag).sort((a, b) => a.order - b.order)
 
   for (const category of sortedCategories) {
     const components = dag.components.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
@@ -81,8 +81,9 @@ export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName
 
     const shape = DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase())
     const nameSuffix = (comp: Component) => addName ? nodeLabel(comp.name, shape) : ''
+    const showSubgraph = dag.landscape?.categorySubgraphs?.[category.id] ?? category.showSubgraph
 
-    if (forceCategory || category.showSubgraph) {
+    if (forceCategory || showSubgraph) {
       lines.push(`  subgraph ${category.name}`)
       for (const comp of components) lines.push(`    ${toNodeId(comp.name)}${nameSuffix(comp)}`)
       lines.push('  end')

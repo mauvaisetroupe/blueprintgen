@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { DEFAULT_ZONE_NAMES, DEFAULT_ZONE_COLORS, allNetworkZones } from '@/types/dag'
+import { DEFAULT_ZONE_NAMES, DEFAULT_ZONE_COLORS, allNetworkZones, allCategories } from '@/types/dag'
 import { generateTechnicalLandscapeDsl } from '@/utils/technicalLandscapeDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
@@ -30,7 +30,7 @@ const dsl = computed(() => dag.value ? generateTechnicalLandscapeDsl(dag.value) 
 // --- Composants groupés par catégorie ---
 const categoriesWithComponents = computed(() => {
   if (!dag.value) return []
-  return dag.value.categories
+  return allCategories(dag.value)
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((cat) => ({

@@ -3,6 +3,7 @@ import { computed, inject, nextTick, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps, toParticipantId, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
+import { allCategories } from '@/types/dag'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
 import FlowStepSpreadsheet from '@/components/dag/FlowStepSpreadsheet.vue'
@@ -45,7 +46,7 @@ const diagramModeOptions = [
   { label: 'Activity', value: 'activity' },
 ]
 
-function allCategoryIds() { return new Set(dag.value?.categories.map((c) => c.id) ?? []) }
+function allCategoryIds() { return new Set(dag.value ? allCategories(dag.value).map((c) => c.id) : []) }
 
 // Options de rendu — par flow, initialisées depuis flow.viewOptions à chaque sélection
 const diagramMode       = ref<DiagramMode>('sequence')
@@ -480,7 +481,7 @@ const dslReadOnlyHeaderForEditor = computed(() => {
               <div class="subgraph-options">
                 <span class="subgraph-label">Subgraphs:</span>
                 <label
-                  v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+                  v-for="cat in allCategories(dag).sort((a, b) => a.order - b.order)"
                   v-show="activeCategoryIds.has(cat.id)"
                   :key="cat.id"
                   class="toggle-label"

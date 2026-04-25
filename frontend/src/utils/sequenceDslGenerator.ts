@@ -1,4 +1,5 @@
 import type { Dag, ApplicationFlow, FlowStep } from '@/types/dag'
+import { allCategories } from '@/types/dag'
 import { toNodeId } from './landscapeDslGenerator'
 
 // Reuse the same ID convention as the landscape generator
@@ -193,7 +194,7 @@ export function buildActivityDsl(
   }
 
   // Subgraphs dans l'ordre des catégories
-  const sortedCats = [...dag.categories].sort((a, b) => a.order - b.order)
+  const sortedCats = allCategories(dag).sort((a, b) => a.order - b.order)
   for (const cat of sortedCats) {
     const ids = byCategory.get(cat.id)
     if (!ids?.length) continue

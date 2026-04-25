@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, defaultZoneId } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -35,6 +35,46 @@ function migrateTechnicalLandscape(tl: any) {
   }
 }
 
+// Migration défensive : convertit l'ancien format dag.categories vers customCategories + disabledCategoryIds
+function migrateCategories(dag: any): {
+  customCategories: Category[]
+  disabledCategoryIds: string[]
+  components: Component[]
+} {
+  const oldCategories: any[] = dag.categories ?? []
+
+  // Table de correspondance : ancien UUID → ID stable (pour les catégories par défaut)
+  const oldIdToStable = new Map<string, string>()
+  for (const cat of oldCategories) {
+    if (DEFAULT_CATEGORY_NAMES.has(cat.name.toLowerCase())) {
+      oldIdToStable.set(cat.id, defaultCategoryId(cat.name))
+    }
+  }
+
+  // Catégories custom (non-défaut)
+  const customCategories: Category[] = oldCategories
+    .filter((c: any) => !DEFAULT_CATEGORY_NAMES.has(c.name.toLowerCase()))
+    .map((c: any, i: number) => ({
+      id:           c.id,
+      name:         c.name,
+      order:        DEFAULT_CATEGORIES.length + i + 1,
+      showSubgraph: c.showSubgraph,
+    }))
+
+  // Catégories par défaut absentes de l'ancien DAG (supprimées par l'architecte)
+  const disabledCategoryIds: string[] = DEFAULT_CATEGORIES
+    .filter((def) => !oldCategories.some((c: any) => c.name.toLowerCase() === def.name.toLowerCase()))
+    .map((def) => defaultCategoryId(def.name))
+
+  // Migration des composants : remplace les anciens UUID par les IDs stables
+  const components: Component[] = (dag.components ?? []).map((comp: any) => {
+    const stableId = oldIdToStable.get(comp.categoryId)
+    return stableId ? { ...comp, categoryId: stableId } : comp
+  })
+
+  return { customCategories, disabledCategoryIds, components }
+}
+
 function now(): string {
   return new Date().toISOString()
 }
@@ -57,7 +97,7 @@ export const useDagStore = defineStore(
         description,
         createdAt: now(),
         updatedAt: now(),
-        categories: DEFAULT_CATEGORIES.map((c) => ({ ...c, id: generateId() })),
+        customCategories: [],   // toutes les catégories par défaut sont actives (aucune désactivée)
         components: [],
         relations: [],
         landscape: {},
@@ -89,20 +129,27 @@ export const useDagStore = defineStore(
      * Les champs corrompus ou manquants sont sanitizés.
      */
     function openDag(data: Dag): Dag {
+      const rawData = data as any
+      const catMigration = rawData.categories
+        ? migrateCategories(rawData)
+        : { customCategories: data.customCategories ?? [], disabledCategoryIds: data.disabledCategoryIds ?? [], components: data.components ?? [] }
+
       const dag: Dag = {
         ...data,
         id:        generateId(),
         createdAt: now(),
         updatedAt: now(),
         landscape: {
-          useElk:    data.landscape?.useElk,
-          autoSync:  data.landscape?.autoSync,
+          useElk:           data.landscape?.useElk,
+          autoSync:         data.landscape?.autoSync,
+          categorySubgraphs: data.landscape?.categorySubgraphs,
         },
         // Champs ajoutés dans les versions récentes — migration défensive
         relations:          data.relations        ?? [],
         applicationFlows:   data.applicationFlows ?? [],
-        categories:         data.categories         ?? [],
-        components:         data.components         ?? [],
+        customCategories:   catMigration.customCategories,
+        disabledCategoryIds: catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
+        components:         catMigration.components,
         technicalLandscape: migrateTechnicalLandscape(data.technicalLandscape),
       }
       dags.value.push(dag)
@@ -120,39 +167,49 @@ export const useDagStore = defineStore(
       const existing = dags.value.find((d) => d.id === draft.id)
 
       if (existing) {
+        // S'assurer que la migration est faite
+        getDag(existing.id)
+
         existing.name = draft.name
         existing.description = draft.description
 
-        // Merge categories — add missing ones, keep existing ones intact
+        const currentCategories = allCategories(existing)
+
+        // Merge categories — ajouter les manquantes, garder les existantes intactes
         for (const catName of draft.categories) {
-          const alreadyExists = existing.categories.some(
-            (c) => c.name.toLowerCase() === catName.toLowerCase(),
-          )
+          const alreadyExists = currentCategories.some((c) => c.name.toLowerCase() === catName.toLowerCase())
           if (!alreadyExists) {
-            const defaults = defaultByName.get(catName.toLowerCase())
-            existing.categories.push({
-              id: generateId(),
-              name: defaults?.name ?? catName,
-              order: defaults?.order ?? existing.categories.length + 1,
-              showSubgraph: defaults?.showSubgraph ?? true,
-            })
+            const def = defaultByName.get(catName.toLowerCase())
+            if (def) {
+              // Catégorie par défaut désactivée → réactiver
+              existing.disabledCategoryIds = (existing.disabledCategoryIds ?? []).filter(
+                (id) => id !== defaultCategoryId(def.name),
+              )
+            } else {
+              existing.customCategories.push({
+                id:           generateId(),
+                name:         catName,
+                order:        DEFAULT_CATEGORIES.length + existing.customCategories.length + 1,
+                showSubgraph: true,
+              })
+            }
           }
         }
 
-        // Merge components — add missing ones, keep existing ones intact
+        // Merge components — add missing ones
         for (const comp of draft.components ?? []) {
           const alreadyExists = existing.components.some(
             (c) => c.name.toLowerCase() === comp.name.toLowerCase(),
           )
           if (!alreadyExists) {
-            const category = existing.categories.find(
+            const category = allCategories(existing).find(
               (c) => c.name.toLowerCase() === comp.category.toLowerCase(),
             )
             existing.components.push({
-              id: generateId(),
-              name: comp.name,
+              id:          generateId(),
+              name:        comp.name,
               description: comp.description,
-              categoryId: category?.id ?? '',
+              categoryId:  category?.id ?? '',
             })
           }
         }
@@ -161,37 +218,56 @@ export const useDagStore = defineStore(
         return existing
       }
 
-      // Create new DAG from draft
-      const categoryByName = new Map<string, Category>()
-      const categories = draft.categories.map((name, index) => {
-        const defaults = defaultByName.get(name.toLowerCase())
-        const cat: Category = {
-          id: generateId(),
-          name: defaults?.name ?? name,
-          order: defaults?.order ?? DEFAULT_CATEGORIES.length + index + 1,
-          showSubgraph: defaults?.showSubgraph ?? true,
+      // Créer un nouveau DAG depuis le draft
+      // Seules les catégories mentionnées dans draft.categories sont actives
+      const categoryIdByName = new Map<string, string>()
+      const draftNamesLower  = new Set(draft.categories.map((n) => n.toLowerCase()))
+
+      // Catégories par défaut non présentes dans le draft → désactivées
+      const disabledCategoryIds: string[] = DEFAULT_CATEGORIES
+        .filter((def) => !draftNamesLower.has(def.name.toLowerCase()))
+        .map((def) => defaultCategoryId(def.name))
+
+      // Catégories par défaut présentes dans le draft → actives (IDs stables)
+      for (const def of DEFAULT_CATEGORIES) {
+        if (draftNamesLower.has(def.name.toLowerCase())) {
+          categoryIdByName.set(def.name.toLowerCase(), defaultCategoryId(def.name))
         }
-        categoryByName.set(name.toLowerCase(), cat)
-        return cat
-      })
+      }
+
+      // Catégories custom (non-défaut dans le draft)
+      const customCategories: Category[] = []
+      for (const catName of draft.categories) {
+        if (!defaultByName.has(catName.toLowerCase())) {
+          const id = generateId()
+          customCategories.push({
+            id,
+            name:         catName,
+            order:        DEFAULT_CATEGORIES.length + customCategories.length + 1,
+            showSubgraph: true,
+          })
+          categoryIdByName.set(catName.toLowerCase(), id)
+        }
+      }
 
       const components = (draft.components ?? []).map((c) => ({
-        id: generateId(),
-        name: c.name,
+        id:          generateId(),
+        name:        c.name,
         description: c.description,
-        categoryId: categoryByName.get(c.category.toLowerCase())?.id ?? '',
+        categoryId:  categoryIdByName.get(c.category.toLowerCase()) ?? '',
       }))
 
       const dag: Dag = {
-        id: draft.id,
-        name: draft.name,
+        id:          draft.id,
+        name:        draft.name,
         description: draft.description,
-        createdAt: now(),
-        updatedAt: now(),
-        categories,
+        createdAt:   now(),
+        updatedAt:   now(),
+        customCategories,
+        disabledCategoryIds: disabledCategoryIds.length > 0 ? disabledCategoryIds : undefined,
         components,
-        relations: [],
-        landscape: {},
+        relations:   [],
+        landscape:   {},
         technicalLandscape: {
           customNetworkZones: [],
           instances:          [],
@@ -212,6 +288,14 @@ export const useDagStore = defineStore(
       if (!dag.technicalLandscape?.customNetworkZones) {
         dag.technicalLandscape = migrateTechnicalLandscape(dag.technicalLandscape)
       }
+      const rawDag = dag as any
+      if (!dag.customCategories && rawDag.categories) {
+        const { customCategories, disabledCategoryIds, components } = migrateCategories(rawDag)
+        dag.customCategories = customCategories
+        if (disabledCategoryIds.length > 0) dag.disabledCategoryIds = disabledCategoryIds
+        dag.components = components
+        delete rawDag.categories
+      }
       return dag
     }
 
@@ -220,13 +304,25 @@ export const useDagStore = defineStore(
     function addCategory(dagId: string, name: string): Category {
       const dag = getDag(dagId)
       if (!dag) throw new Error(`DAG ${dagId} not found`)
+
+      // Si c'est une catégorie par défaut précédemment désactivée → réactiver
+      const def = DEFAULT_CATEGORIES.find((c) => c.name.toLowerCase() === name.toLowerCase())
+      if (def) {
+        dag.disabledCategoryIds = (dag.disabledCategoryIds ?? []).filter(
+          (id) => id !== defaultCategoryId(def.name),
+        )
+        dag.updatedAt = now()
+        return { id: defaultCategoryId(def.name), name: def.name, order: def.order, showSubgraph: def.showSubgraph }
+      }
+
+      // Catégorie custom
       const category: Category = {
-        id: generateId(),
+        id:           generateId(),
         name,
-        order: dag.categories.length + 1,
+        order:        DEFAULT_CATEGORIES.length + dag.customCategories.length + 1,
         showSubgraph: true,
       }
-      dag.categories.push(category)
+      dag.customCategories.push(category)
       dag.updatedAt = now()
       return category
     }
@@ -234,7 +330,8 @@ export const useDagStore = defineStore(
     function updateCategory(dagId: string, categoryId: string, patch: Partial<Omit<Category, 'id'>>) {
       const dag = getDag(dagId)
       if (!dag) return
-      const category = dag.categories.find((c) => c.id === categoryId)
+      // Seules les catégories custom sont modifiables (les défauts sont immuables)
+      const category = dag.customCategories.find((c) => c.id === categoryId)
       if (!category) return
       Object.assign(category, patch)
       dag.updatedAt = now()
@@ -243,10 +340,23 @@ export const useDagStore = defineStore(
     function deleteCategory(dagId: string, categoryId: string) {
       const dag = getDag(dagId)
       if (!dag) return
-      dag.categories = dag.categories.filter((c) => c.id !== categoryId)
-      dag.components
-        .filter((c) => c.categoryId === categoryId)
-        .forEach((c) => (c.categoryId = ''))
+      // Catégorie par défaut → désactiver
+      const isDefault = DEFAULT_CATEGORIES.some((def) => defaultCategoryId(def.name) === categoryId)
+      if (isDefault) {
+        if (!dag.disabledCategoryIds) dag.disabledCategoryIds = []
+        if (!dag.disabledCategoryIds.includes(categoryId)) dag.disabledCategoryIds.push(categoryId)
+      } else {
+        dag.customCategories = dag.customCategories.filter((c) => c.id !== categoryId)
+      }
+      dag.components.filter((c) => c.categoryId === categoryId).forEach((c) => (c.categoryId = ''))
+      dag.updatedAt = now()
+    }
+
+    function setLandscapeCategorySubgraph(dagId: string, categoryId: string, show: boolean) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      if (!dag.landscape.categorySubgraphs) dag.landscape.categorySubgraphs = {}
+      dag.landscape.categorySubgraphs[categoryId] = show
       dag.updatedAt = now()
     }
 
@@ -325,15 +435,16 @@ export const useDagStore = defineStore(
       if (!dag) return
 
       for (const node of parsed.nodes) {
-        let category = node.subgraph ? dag.categories.find((c) => c.name === node.subgraph) : null
+        const currentCategories = allCategories(dag)
+        let category = node.subgraph ? currentCategories.find((c) => c.name === node.subgraph) : null
         if (node.subgraph && !category) {
           category = {
-            id: generateId(),
-            name: node.subgraph,
-            order: dag.categories.length + 1,
+            id:           generateId(),
+            name:         node.subgraph,
+            order:        DEFAULT_CATEGORIES.length + dag.customCategories.length + 1,
             showSubgraph: true,
           }
-          dag.categories.push(category)
+          dag.customCategories.push(category)
         }
 
         // Match by label first; fallback to node ID (handles renames in the DSL)
@@ -599,6 +710,7 @@ export const useDagStore = defineStore(
       syncFromDsl,
       setLandscapeUseElk,
       setLandscapeAutoSync,
+      setLandscapeCategorySubgraph,
       replaceManualRelations,
       saveFlowSteps,
       addFlow,

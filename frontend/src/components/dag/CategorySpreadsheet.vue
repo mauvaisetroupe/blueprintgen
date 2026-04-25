@@ -2,7 +2,7 @@
 import { ref, nextTick, computed } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { Category, Component } from '@/types/dag'
-import { DEFAULT_CATEGORY_NAMES } from '@/types/dag'
+import { DEFAULT_CATEGORY_NAMES, allCategories } from '@/types/dag'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -25,7 +25,7 @@ const movingComponent = ref<Component | null>(null)
 const otherCategories = computed(() => {
   const dag = store.getDag(props.dagId)
   if (!dag) return []
-  return dag.categories
+  return allCategories(dag)
     .filter((c) => c.id !== props.category.id)
     .sort((a, b) => a.order - b.order)
 })
