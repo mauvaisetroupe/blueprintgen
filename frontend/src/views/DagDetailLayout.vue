@@ -80,9 +80,21 @@ function saveLocally() {
 
 <template>
   <div v-if="dag" class="detail-layout">
-    <div class="detail-header">
-      <h2>{{ dag.name }}</h2>
-      <div class="header-actions">
+
+    <Tabs value="0" class="detail-tabs">
+      <TabList>
+        <Tab
+          v-for="tab in tabs"
+          :key="tab.value"
+          :value="tab.value"
+          as="div"
+        >
+          <router-link :to="`/dag/${dag.id}/${tab.route}`" class="tab-link">
+            {{ tab.label }}
+          </router-link>
+        </Tab>
+
+              <div class="header-actions">
 
         <div class="elk-toggle">
           <ToggleSwitch
@@ -112,20 +124,6 @@ function saveLocally() {
           @click="handleExport"
         />
       </div>
-    </div>
-
-    <Tabs value="0" class="detail-tabs">
-      <TabList>
-        <Tab
-          v-for="tab in tabs"
-          :key="tab.value"
-          :value="tab.value"
-          as="div"
-        >
-          <router-link :to="`/dag/${dag.id}/${tab.route}`" class="tab-link">
-            {{ tab.label }}
-          </router-link>
-        </Tab>
       </TabList>
     </Tabs>
 
@@ -161,6 +159,7 @@ function saveLocally() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  margin-left: auto;
 }
 
 .detail-tabs {
