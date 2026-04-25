@@ -1,5 +1,5 @@
 import type { Dag, NodeShape } from '@/types/dag'
-import { DEFAULT_SHAPE_BY_NAME, DEFAULT_ZONE_COLORS } from '@/types/dag'
+import { DEFAULT_SHAPE_BY_NAME, DEFAULT_ZONE_COLORS, allNetworkZones } from '@/types/dag'
 import { toNodeId } from './landscapeDslGenerator'
 
 /**
@@ -33,8 +33,8 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     (c) => c.name.trim() !== '' && !instancesByComponent.has(c.id),
   )
 
-  // Zones triées
-  const zones = [...tl.networkZones].sort((a, b) => a.order - b.order)
+  // Zones triées : defaults (IDs stables) + zones custom du DAG
+  const zones = allNetworkZones(tl).sort((a, b) => a.order - b.order)
   const renderedZoneIds: string[] = []
 
   // Pour chaque zone, les composants qui y ont une instance
@@ -128,7 +128,8 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
       ? instanceNodeId(toComp.id, toInsts[0].networkZoneId)
       : toNodeId(toComp.name)
 
-    const edgeLabel = rel.protocol ?? rel.label
+    // Dans le landscape technique, on n'affiche que le protocole — pas le label fonctionnel
+    const edgeLabel = rel.protocol
     lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
   }
 

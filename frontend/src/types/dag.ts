@@ -82,15 +82,12 @@ export interface TechnicalRelation {
 }
 
 export interface TechnicalLandscape {
-  networkZones: NetworkZone[]
+  customNetworkZones: NetworkZone[]   // zones ajoutées par l'architecte — les zones par défaut ne sont PAS stockées ici
   instances: ComponentInstance[]
   technicalRelations: TechnicalRelation[]
   technicalServices: TechnicalService[]
   useElk?: boolean
-  // Override indépendant du showSubgraph par catégorie (clé = categoryId)
-  // Si absent, fallback sur category.showSubgraph
   categorySubgraphs?: Record<string, boolean>
-  // autoSync est partagé avec dag.landscape.autoSync — pas de valeur séparée ici
 }
 
 // Zones réseau prédéfinies (non renommables, dérivé à la volée comme pour les catégories)
@@ -119,6 +116,25 @@ export const DEFAULT_ZONE_NAMES = new Set<string>(
 export const DEFAULT_ZONE_COLORS = new Map<string, { fill: string; stroke: string }>(
   DEFAULT_NETWORK_ZONES.map((z) => [z.name.toLowerCase(), { fill: z.fill, stroke: z.stroke }]),
 )
+
+// ID stable dérivé du nom — utilisé pour les zones par défaut (non stockées dans le DAG)
+export function defaultZoneId(name: string): string {
+  return `zone__${name.toLowerCase().replace(/\s+/g, '_')}`
+}
+
+// Liste complète des zones : defaults (IDs stables) + zones custom du DAG
+export function allNetworkZones(tl: TechnicalLandscape): NetworkZone[] {
+  const defaults: NetworkZone[] = DEFAULT_NETWORK_ZONES.map((z) => ({
+    id:    defaultZoneId(z.name),
+    name:  z.name,
+    order: z.order,
+  }))
+  const customs = (tl.customNetworkZones ?? []).map((z, i) => ({
+    ...z,
+    order: DEFAULT_NETWORK_ZONES.length + i + 1,
+  }))
+  return [...defaults, ...customs]
+}
 
 // --- Application flows section ---
 

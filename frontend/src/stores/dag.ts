@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, defaultZoneId } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -10,18 +10,28 @@ function generateId(): string {
 
 // Migration défensive : convertit l'ancien format TechnicalLandscape vers le nouveau
 function migrateTechnicalLandscape(tl: any) {
-  // Zones de base — migration additive : on ajoute les nouvelles zones par défaut si absentes
-  const existingZones: NetworkZone[] = tl?.networkZones ?? []
-  for (const def of DEFAULT_NETWORK_ZONES) {
-    const alreadyExists = existingZones.some((z) => z.name.toLowerCase() === def.name.toLowerCase())
-    if (!alreadyExists) existingZones.push({ id: generateId(), name: def.name, order: def.order })
-  }
+  // Récupère les zones custom (anciennes ou nouvelles) en excluant les zones par défaut
+  const defaultNames = new Set(DEFAULT_NETWORK_ZONES.map((z) => z.name.toLowerCase()))
+  const rawZones: NetworkZone[] = tl?.networkZones ?? tl?.customNetworkZones ?? []
+  const customZones = rawZones.filter((z: NetworkZone) => !defaultNames.has(z.name.toLowerCase()))
+
+  // Migre les ComponentInstances qui référencent d'anciens IDs de zones par défaut
+  // (remplace les UUID par les IDs stables dérivés du nom)
+  const instances: ComponentInstance[] = (tl?.instances ?? []).map((inst: ComponentInstance) => {
+    const oldZone = rawZones.find((z: NetworkZone) => z.id === inst.networkZoneId)
+    if (oldZone && defaultNames.has(oldZone.name.toLowerCase())) {
+      return { ...inst, networkZoneId: defaultZoneId(oldZone.name) }
+    }
+    return inst
+  })
+
   return {
-    networkZones:       existingZones,
-    instances:          tl?.instances          ?? [],
+    customNetworkZones: customZones,
+    instances,
     technicalRelations: tl?.technicalRelations ?? [],
     technicalServices:  tl?.technicalServices  ?? [],
     useElk:             tl?.useElk,
+    categorySubgraphs:  tl?.categorySubgraphs,
   }
 }
 
@@ -52,7 +62,7 @@ export const useDagStore = defineStore(
         relations: [],
         landscape: {},
         technicalLandscape: {
-          networkZones:       DEFAULT_NETWORK_ZONES.map((z) => ({ ...z, id: generateId() })),
+          customNetworkZones: [],
           instances:          [],
           technicalRelations: [],
           technicalServices:  [],
@@ -183,7 +193,7 @@ export const useDagStore = defineStore(
         relations: [],
         landscape: {},
         technicalLandscape: {
-          networkZones:       DEFAULT_NETWORK_ZONES.map((z) => ({ ...z, id: generateId() })),
+          customNetworkZones: [],
           instances:          [],
           technicalRelations: [],
           technicalServices:  [],
@@ -199,7 +209,7 @@ export const useDagStore = defineStore(
       if (!dag) return undefined
       // Migrations défensives pour les DAGs créés avant les nouveaux champs
       if (!dag.relations) dag.relations = []
-      if (!dag.technicalLandscape?.networkZones) {
+      if (!dag.technicalLandscape?.customNetworkZones) {
         dag.technicalLandscape = migrateTechnicalLandscape(dag.technicalLandscape)
       }
       return dag
@@ -434,9 +444,9 @@ export const useDagStore = defineStore(
       const zone: NetworkZone = {
         id:    generateId(),
         name,
-        order: dag.technicalLandscape.networkZones.length + 1,
+        order: dag.technicalLandscape.customNetworkZones.length + 1,
       }
-      dag.technicalLandscape.networkZones.push(zone)
+      dag.technicalLandscape.customNetworkZones.push(zone)
       dag.updatedAt = now()
       return zone
     }
@@ -444,7 +454,7 @@ export const useDagStore = defineStore(
     function deleteNetworkZone(dagId: string, zoneId: string) {
       const dag = getDag(dagId)
       if (!dag) return
-      dag.technicalLandscape.networkZones = dag.technicalLandscape.networkZones.filter((z) => z.id !== zoneId)
+      dag.technicalLandscape.customNetworkZones = dag.technicalLandscape.customNetworkZones.filter((z) => z.id !== zoneId)
       // Supprimer les instances liées à cette zone
       const removedInstanceIds = dag.technicalLandscape.instances
         .filter((i) => i.networkZoneId === zoneId)

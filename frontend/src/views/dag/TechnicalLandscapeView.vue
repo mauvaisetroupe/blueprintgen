@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { DEFAULT_ZONE_NAMES, DEFAULT_ZONE_COLORS } from '@/types/dag'
+import { DEFAULT_ZONE_NAMES, DEFAULT_ZONE_COLORS, allNetworkZones } from '@/types/dag'
 import { generateTechnicalLandscapeDsl } from '@/utils/technicalLandscapeDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
@@ -40,12 +40,8 @@ const categoriesWithComponents = computed(() => {
     .filter((g) => g.components.length > 0)
 })
 
-// --- Zone réseau : lookup id → name ---
-const zoneById = computed(() => {
-  const m = new Map<string, string>()
-  tl.value?.networkZones.forEach((z) => m.set(z.id, z.name))
-  return m
-})
+// --- Toutes les zones (defaults + custom) ---
+const zones = computed(() => tl.value ? allNetworkZones(tl.value) : [])
 
 // --- Instances par composant ---
 const instancesByComponent = computed(() => {
@@ -179,7 +175,7 @@ async function copyMermaid() {
             </div>
             <div class="zones-list">
               <span
-                v-for="zone in tl.networkZones.slice().sort((a, b) => a.order - b.order)"
+                v-for="zone in zones"
                 :key="zone.id"
                 class="zone-tag"
                 :style="zoneStyle(zone.name)"
@@ -257,7 +253,7 @@ async function copyMermaid() {
                   <td class="col-zones">
                     <div class="zone-checkboxes">
                       <label
-                        v-for="zone in tl.networkZones.slice().sort((a, b) => a.order - b.order)"
+                        v-for="zone in zones"
                         :key="zone.id"
                         class="zone-checkbox-label"
                         :class="{ active: instancesByComponent.get(comp.id)?.includes(zone.id) }"
