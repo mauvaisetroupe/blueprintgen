@@ -1,8 +1,18 @@
-import type { Dag } from '@/types/dag'
+import type { Dag, Component, NodeShape } from '@/types/dag'
+import { DEFAULT_SHAPE_BY_NAME } from '@/types/dag'
 
 // Converts a component name to a valid Mermaid node ID
 export function toNodeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
+}
+
+// Génère la syntaxe Mermaid du label de nœud selon la forme de la catégorie
+function nodeLabel(name: string, shape?: NodeShape): string {
+  switch (shape) {
+    case 'cylinder': return `[("${name}")]`
+    case 'rounded':  return `(["${name}"])`
+    default:         return `["${name}"]`
+  }
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -64,7 +74,8 @@ export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName
     const components = dag.components.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
     if (components.length === 0) continue
 
-    const nameSuffix = (comp: any) => addName ? `["${comp.name}"]` : ''
+    const shape = DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase())
+    const nameSuffix = (comp: Component) => addName ? nodeLabel(comp.name, shape) : ''
 
     if (forceCategory || category.showSubgraph) {
       lines.push(`  subgraph ${category.name}`)

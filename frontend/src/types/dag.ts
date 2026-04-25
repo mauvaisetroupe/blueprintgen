@@ -1,10 +1,22 @@
 // Shared building blocks
 
+export type NodeShape = 'rect' | 'cylinder' | 'rounded'
+
 export interface Category {
   id: string
   name: string
   order: number
   showSubgraph: boolean
+  isDefault?: boolean   // catégories du référentiel — non renommables
+}
+
+// Forme Mermaid associée à chaque catégorie par défaut — dérivée à la volée, non stockée dans le DAG
+export interface DefaultCategoryDef {
+  name: string
+  order: number
+  showSubgraph: boolean
+  isDefault: true
+  nodeShape?: NodeShape
 }
 
 export interface Component {
@@ -115,13 +127,20 @@ export interface DagImportDraft {
 }
 
 // Default categories based on the reference Mermaid example
-export const DEFAULT_CATEGORIES: Omit<Category, 'id'>[] = [
-  { name: 'Users',            order: 1, showSubgraph: true },
-  { name: 'Frontends',        order: 2, showSubgraph: true },
-  { name: 'Backends',         order: 3, showSubgraph: true },
-  { name: 'Brokers',          order: 4, showSubgraph: true },
-  { name: 'Batchs',           order: 5, showSubgraph: true },
-  { name: 'Data Storage',     order: 6, showSubgraph: true },
-  { name: 'Analytics',        order: 7, showSubgraph: true },
-  { name: 'External Systems', order: 8, showSubgraph: true },
+export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
+  { name: 'Users',            order: 1, showSubgraph: true,  isDefault: true, nodeShape: 'rounded'  },
+  { name: 'Frontends',        order: 2, showSubgraph: true,  isDefault: true },
+  { name: 'Backends',         order: 3, showSubgraph: true,  isDefault: true },
+  { name: 'Brokers',          order: 4, showSubgraph: true,  isDefault: true },
+  { name: 'Batchs',           order: 5, showSubgraph: true,  isDefault: true },
+  { name: 'Data Storage',     order: 6, showSubgraph: true,  isDefault: true, nodeShape: 'cylinder' },
+  { name: 'Analytics',        order: 7, showSubgraph: true,  isDefault: true },
+  { name: 'External Systems', order: 8, showSubgraph: true,  isDefault: true, nodeShape: 'rounded'  },
 ]
+
+// Lookup rapide nom → forme (case-insensitive)
+export const DEFAULT_SHAPE_BY_NAME = new Map<string, NodeShape>(
+  DEFAULT_CATEGORIES
+    .filter((c) => c.nodeShape !== undefined)
+    .map((c) => [c.name.toLowerCase(), c.nodeShape!]),
+)

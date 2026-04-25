@@ -137,8 +137,10 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
         />
       </template>
       <template v-else>
-        <span class="category-title" @dblclick="startEditName">{{ category.name }}</span>
-        <Button icon="pi pi-pencil" size="small" text severity="secondary" @click="startEditName" />
+        <span class="category-title" :class="{ editable: !category.isDefault }" @dblclick="!category.isDefault && startEditName()">
+          {{ category.name }}
+        </span>
+        <Button v-if="!category.isDefault" icon="pi pi-pencil" size="small" text severity="secondary" @click="startEditName" />
         <Button icon="pi pi-trash" size="small" text severity="danger" @click="store.deleteCategory(dagId, category.id)" />
       </template>
     </div>
@@ -223,6 +225,10 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
   font-weight: 600;
   flex: 1;
   cursor: default;
+}
+
+.category-title.editable {
+  cursor: text;
 }
 
 .sheet {
