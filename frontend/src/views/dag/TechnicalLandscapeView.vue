@@ -217,7 +217,7 @@ watch(
       const toInsts   = instancesFor(lr.toComponentId)
       if (fromInsts.length === 0 || toInsts.length === 0) continue
       if (technicalRelationsFor(lr.fromComponentId, lr.toComponentId).length > 0) continue
-      store.addTechnicalRelation(dag.value.id, lr.fromComponentId, lr.toComponentId, fromInsts[0].id, toInsts[0].id)
+      store.addTechnicalRelation(dag.value.id, lr.fromComponentId, lr.toComponentId, fromInsts[0]!.id, toInsts[0]!.id)
     }
   },
   { immediate: true },
