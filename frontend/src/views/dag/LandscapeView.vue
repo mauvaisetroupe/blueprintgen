@@ -244,30 +244,8 @@ async function copyMermaid() {
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="elk-toggle">
-        <ToggleSwitch v-model="useElk" input-id="elk-switch" />
-        <label for="elk-switch">ELK</label>
-      </div>
-
-      <div class="elk-toggle">
         <ToggleSwitch v-model="autoSync" input-id="autosync-switch" />
-        <label for="autosync-switch">Auto-sync flows</label>
-      </div>
-
-      <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
-        <span class="subgraph-label">Subgraphs:</span>
-        <label
-          v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
-          v-show="categoryIdsWithComponents.has(cat.id)"
-          :key="cat.id"
-          class="toggle-label"
-        >
-          <input
-            type="checkbox"
-            :checked="cat.showSubgraph"
-            @change="toggleSubgraph(cat.id, ($event.target as HTMLInputElement).checked)"
-          />
-          {{ cat.name }}
-        </label>
+        <label for="autosync-switch">Include flow relations</label>
       </div>
 
       <!-- Validation status (mode manuel) -->
@@ -303,6 +281,28 @@ async function copyMermaid() {
         <RelationSpreadsheet :dag="dag" />
       </SplitterPanel>
       <SplitterPanel :size="65" :min-size="30" class="diagram-panel">
+        <div class="diagram-toolbar">
+          <div class="elk-toggle">
+            <ToggleSwitch v-model="useElk" input-id="elk-switch" size="small" />
+            <label for="elk-switch">ELK</label>
+          </div>
+          <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
+            <span class="subgraph-label">Subgraphs:</span>
+            <label
+              v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+              v-show="categoryIdsWithComponents.has(cat.id)"
+              :key="cat.id"
+              class="toggle-label"
+            >
+              <input
+                type="checkbox"
+                :checked="cat.showSubgraph"
+                @change="toggleSubgraph(cat.id, ($event.target as HTMLInputElement).checked)"
+              />
+              {{ cat.name }}
+            </label>
+          </div>
+        </div>
         <MermaidDiagram :code="activeDsl" />
       </SplitterPanel>
     </Splitter>
@@ -338,6 +338,28 @@ async function copyMermaid() {
       </SplitterPanel>
 
       <SplitterPanel :size="65" :min-size="30" class="diagram-panel">
+        <div class="diagram-toolbar">
+          <div class="elk-toggle">
+            <ToggleSwitch v-model="useElk" input-id="elk-switch-dsl" size="small" />
+            <label for="elk-switch-dsl">ELK</label>
+          </div>
+          <div v-if="categoryIdsWithComponents.size > 0" class="subgraph-options">
+            <span class="subgraph-label">Subgraphs:</span>
+            <label
+              v-for="cat in dag.categories.slice().sort((a, b) => a.order - b.order)"
+              v-show="categoryIdsWithComponents.has(cat.id)"
+              :key="cat.id"
+              class="toggle-label"
+            >
+              <input
+                type="checkbox"
+                :checked="cat.showSubgraph"
+                @change="toggleSubgraph(cat.id, ($event.target as HTMLInputElement).checked)"
+              />
+              {{ cat.name }}
+            </label>
+          </div>
+        </div>
         <MermaidDiagram :code="activeDsl" />
       </SplitterPanel>
     </Splitter>
@@ -418,10 +440,20 @@ async function copyMermaid() {
 
 .diagram-panel {
   overflow: auto;
-  padding: 1rem !important;
+  padding: 0 !important;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+}
+
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--p-content-border-color);
+  flex-shrink: 0;
+  font-size: 0.875rem;
 }
 
 .issue-list {
