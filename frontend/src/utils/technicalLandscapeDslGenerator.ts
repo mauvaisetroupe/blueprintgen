@@ -42,7 +42,7 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     if (componentsInZone.length === 0) continue
 
     const zoneNodeId = toNodeId(zone.name)
-    lines.push(`  subgraph ${zoneNodeId} ["${zone.name}"]`)
+    lines.push(`  subgraph ${zoneNodeId} ["Zone - ${zone.name}"]`)
 
     const sortedCategories = allCategories(dag).sort((a, b) => a.order - b.order)
     for (const category of sortedCategories) {
