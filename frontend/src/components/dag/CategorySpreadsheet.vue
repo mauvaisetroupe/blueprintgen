@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, computed } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { Category, Component } from '@/types/dag'
+import { DEFAULT_CATEGORY_NAMES } from '@/types/dag'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -13,6 +14,8 @@ const props = defineProps<{
 }>()
 
 const store = useDagStore()
+
+const isDefault = computed(() => DEFAULT_CATEGORY_NAMES.has(props.category.name.toLowerCase()))
 
 // --- Category name editing ---
 const editingName = ref(false)
@@ -137,10 +140,10 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
         />
       </template>
       <template v-else>
-        <span class="category-title" :class="{ editable: !category.isDefault }" @dblclick="!category.isDefault && startEditName()">
+        <span class="category-title" :class="{ editable: !isDefault }" @dblclick="!isDefault && startEditName()">
           {{ category.name }}
         </span>
-        <Button v-if="!category.isDefault" icon="pi pi-pencil" size="small" text severity="secondary" @click="startEditName" />
+        <Button v-if="!isDefault" icon="pi pi-pencil" size="small" text severity="secondary" @click="startEditName" />
         <Button icon="pi pi-trash" size="small" text severity="danger" @click="store.deleteCategory(dagId, category.id)" />
       </template>
     </div>

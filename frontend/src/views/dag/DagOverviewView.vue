@@ -160,6 +160,16 @@ const componentsDsl = computed(() => {
             <h3>Categories & Components</h3>
           </div>
 
+          <CategorySpreadsheet
+            v-for="category in dag.categories.slice().sort((a, b) => a.order - b.order)"
+            :key="category.id"
+            :dag-id="dag.id"
+            :category="category"
+            :components="componentsByCategory[category.id] ?? []"
+          />
+
+          <p v-if="dag.categories.length === 0" class="empty">No categories yet.</p>
+
           <div v-if="addingCategory" class="add-category-form">
             <InputText
               v-model="newCategoryName"
@@ -172,17 +182,7 @@ const componentsDsl = computed(() => {
             <Button icon="pi pi-times" severity="secondary" @click="addingCategory = false" />
           </div>
 
-          <CategorySpreadsheet
-            v-for="category in dag.categories.slice().sort((a, b) => a.order - b.order)"
-            :key="category.id"
-            :dag-id="dag.id"
-            :category="category"
-            :components="componentsByCategory[category.id] ?? []"
-          />
-
-          <p v-if="dag.categories.length === 0" class="empty">No categories yet.</p>
-
-          <Button label="Add category" icon="pi pi-plus" size="small" text class="add-cat-btn" @click="addingCategory = true" />
+          <Button v-else label="Add category" icon="pi pi-plus" size="small" text class="add-cat-btn" @click="addingCategory = true" />
         </div>
       </SplitterPanel>
 

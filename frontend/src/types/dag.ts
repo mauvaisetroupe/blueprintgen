@@ -7,15 +7,13 @@ export interface Category {
   name: string
   order: number
   showSubgraph: boolean
-  isDefault?: boolean   // catégories du référentiel — non renommables
 }
 
-// Forme Mermaid associée à chaque catégorie par défaut — dérivée à la volée, non stockée dans le DAG
+// Définition statique d'une catégorie par défaut — nodeShape dérivé à la volée, rien n'est stocké dans le DAG
 export interface DefaultCategoryDef {
   name: string
   order: number
   showSubgraph: boolean
-  isDefault: true
   nodeShape?: NodeShape
 }
 
@@ -137,6 +135,11 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
   { name: 'Analytics',        order: 7, showSubgraph: true,  isDefault: true },
   { name: 'External Systems', order: 8, showSubgraph: true,  isDefault: true, nodeShape: 'rounded'  },
 ]
+
+// Noms des catégories par défaut (case-insensitive) — pour dériver isDefault à la volée
+export const DEFAULT_CATEGORY_NAMES = new Set<string>(
+  DEFAULT_CATEGORIES.map((c) => c.name.toLowerCase()),
+)
 
 // Lookup rapide nom → forme (case-insensitive)
 export const DEFAULT_SHAPE_BY_NAME = new Map<string, NodeShape>(
