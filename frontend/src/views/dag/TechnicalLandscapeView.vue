@@ -367,21 +367,31 @@ async function copyMermaid() {
           </p>
 
           <div v-for="lr in logicalRelations" :key="`${lr.fromComponentId}->${lr.toComponentId}`" class="rel-block">
-            <!-- En-tête : relation logique -->
+            <!-- En-tête : noms des composants logiques + badge + bouton ajout (multi-zone) -->
             <div class="rel-header">
               <span class="rel-comp">{{ compName(lr.fromComponentId) }}</span>
               <span class="rel-arrow">→</span>
               <span class="rel-comp">{{ compName(lr.toComponentId) }}</span>
-
               <span v-if="instancesFor(lr.fromComponentId).length === 0 || instancesFor(lr.toComponentId).length === 0"
                 class="rel-badge warn" title="One or both components have no zone assigned">⚠ no zone</span>
-
               <div class="rel-header-spacer" />
+              <Button v-if="isMultiZone(lr.fromComponentId, lr.toComponentId)" icon="pi pi-plus" size="small" text severity="secondary" title="Add instance pair"
+                @click="startAddRelation(lr.fromComponentId, lr.toComponentId)" />
+            </div>
 
-              <!-- Cas simple : 1 instance de chaque côté → protocole directement dans l'en-tête -->
-              <template v-if="!isMultiZone(lr.fromComponentId, lr.toComponentId) && instancesFor(lr.fromComponentId).length === 1 && instancesFor(lr.toComponentId).length === 1">
+            <!-- Cas simple : 1 instance de chaque côté -->
+            <template v-if="!isMultiZone(lr.fromComponentId, lr.toComponentId) && instancesFor(lr.fromComponentId).length === 1 && instancesFor(lr.toComponentId).length === 1">
+              <div class="rel-row">
+                <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.fromComponentId)[0].networkZoneId))">
+                  {{ zoneName(instancesFor(lr.fromComponentId)[0].networkZoneId) }}
+                </span>
+                <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
+                <span class="rel-arrow-sm">→</span>
+                <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.toComponentId)[0].networkZoneId))">
+                  {{ zoneName(instancesFor(lr.toComponentId)[0].networkZoneId) }}
+                </span>
+                <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
                 <template v-if="technicalRelationsFor(lr.fromComponentId, lr.toComponentId).length === 0">
-                  <!-- Auto-créer la TechnicalRelation unique au focus du protocol input -->
                   <input class="cell-input protocol-input"
                     :placeholder="lr.protocol ?? 'Protocol'"
                     @change="store.addTechnicalRelation(dag!.id, lr.fromComponentId, lr.toComponentId,
@@ -395,23 +405,23 @@ async function copyMermaid() {
                     @change="updateProtocol(technicalRelationsFor(lr.fromComponentId, lr.toComponentId)[0].id,
                       ($event.target as HTMLInputElement).value)" />
                 </template>
-              </template>
+                <!-- colonne action vide pour conserver l'alignement -->
+                <span />
+              </div>
+            </template>
 
-              <!-- Cas multi-zone : bouton + Add -->
-              <Button v-else icon="pi pi-plus" size="small" text severity="secondary" title="Add instance pair"
-                @click="startAddRelation(lr.fromComponentId, lr.toComponentId)" />
-            </div>
-
-            <!-- Sous-lignes : instances physiques (multi-zone uniquement) -->
+            <!-- Cas multi-zone : sous-lignes par instance physique -->
             <template v-if="isMultiZone(lr.fromComponentId, lr.toComponentId)">
               <div v-for="tr in technicalRelationsFor(lr.fromComponentId, lr.toComponentId)" :key="tr.id" class="rel-row">
                 <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? ''))">
                   {{ zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? '') }}
                 </span>
+                <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
                 <span class="rel-arrow-sm">→</span>
                 <span class="zone-pill" :style="zoneStyle(zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? ''))">
                   {{ zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? '') }}
                 </span>
+                <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
                 <input class="cell-input protocol-input"
                   :value="tr.protocol ?? ''"
                   :placeholder="lr.protocol ?? 'Protocol'"
@@ -426,15 +436,19 @@ async function copyMermaid() {
                     {{ zoneName(inst.networkZoneId) }}
                   </option>
                 </select>
+                <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
                 <span class="rel-arrow-sm">→</span>
                 <select v-model="addingRelation.toInstanceId" class="zone-select">
                   <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">
                     {{ zoneName(inst.networkZoneId) }}
                   </option>
                 </select>
+                <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
                 <input v-model="addingRelation.protocol" class="cell-input protocol-input" placeholder="Protocol" @keyup.enter="submitAddRelation" @keyup.escape="cancelAddRelation" />
-                <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
-                <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
+                <span class="rel-actions">
+                  <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
+                  <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
+                </span>
               </div>
             </template>
           </div>
@@ -675,24 +689,43 @@ async function copyMermaid() {
 .rel-badge.warn { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
 .protocol-input {
-  width: 120px;
-  flex-shrink: 0;
+  width: 100%;
   border: 1px solid var(--p-content-border-color) !important;
   border-radius: 4px;
   background: var(--p-surface-0, #fff) !important;
-  padding: 0.25rem 0.5rem !important;
+  padding: 0.25rem 0.4rem !important;
   font-size: 0.8rem !important;
 }
 .protocol-input:focus { border-color: var(--p-primary-400, #60a5fa) !important; box-shadow: none !important; }
 
-.rel-row {
-  display: flex;
+/* Grille partagée : comp-from | zone-from | → | comp-to | zone-to | protocol | action
+   Toutes les lignes (rel-row ET rel-add-form) utilisent exactement ces colonnes pour un
+   alignement parfait entre les cas simple, multi-zone et formulaire d'ajout. */
+.rel-row,
+.rel-add-form {
+  display: grid;
+  grid-template-columns: 110px 1fr 18px 110px 1fr 110px 30px;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.75rem 0.3rem 1.5rem;
+  column-gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
   border-bottom: 1px solid var(--p-content-border-color);
 }
 .rel-row:last-of-type { border-bottom: none; }
+
+.rel-add-form {
+  background: var(--p-surface-50, #fafafa);
+  border-top: 1px dashed var(--p-content-border-color);
+  border-bottom: none;
+}
+
+.rel-comp-sm {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--p-text-muted-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .zone-pill {
   font-size: 0.75rem;
@@ -700,22 +733,23 @@ async function copyMermaid() {
   border-radius: 20px;
   border: 1px solid var(--p-content-border-color);
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
-.rel-add-form {
+.rel-actions {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.75rem 0.4rem 1.5rem;
-  background: var(--p-surface-50, #fafafa);
-  border-top: 1px dashed var(--p-content-border-color);
+  gap: 0.15rem;
+  grid-column: 7;  /* occupe la colonne action même si 2 boutons */
 }
 
 .zone-select {
+  width: 100%;
   font-size: 0.8rem;
   font-family: inherit;
-  padding: 0.2rem 0.4rem;
+  padding: 0.2rem 0.3rem;
   border: 1px solid var(--p-content-border-color);
   border-radius: 4px;
   background: var(--p-surface-0, #fff);
