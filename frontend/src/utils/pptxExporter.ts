@@ -3,6 +3,7 @@ import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
 import { allCategories } from '@/types/dag'
 import { generateLandscapeDsl } from './landscapeDslGenerator'
+import { generateTechnicalLandscapeDsl } from './technicalLandscapeDslGenerator'
 import { buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse, styleCircledDigits } from './svgInliner'
 
@@ -299,6 +300,20 @@ async function addFlowSlide(pptx: PptxGenJS, dag: Dag, flow: ApplicationFlow) {
   }
 }
 
+async function addTechnicalLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
+  const dsl = generateTechnicalLandscapeDsl(dag)
+  if (!dsl.trim()) return
+
+  const slide = pptx.addSlide()
+  addTitleBar(slide, dag.name + ' — Technical Landscape')
+
+  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(dsl)
+  const anchorX = 0.2,  anchorY = 0.6
+  const availW  = SLIDE_W - 0.4, availH = SLIDE_H - anchorY - 0.1
+  const pos = containRect(naturalW, naturalH, anchorX, anchorY, availW, availH)
+  slide.addImage({ data: dataUrl, ...pos })
+}
+
 // ─── Main export entry point ──────────────────────────────────────────────────
 
 export async function exportToPptx(dag: Dag): Promise<void> {
@@ -315,6 +330,9 @@ export async function exportToPptx(dag: Dag): Promise<void> {
     if (!flow.mermaidDsl?.trim() && flow.steps.length === 0) continue
     await addFlowSlide(pptx, dag, flow)
   }
+
+  // 3. Technical Landscape slide
+  await addTechnicalLandscapeSlide(pptx, dag)
 
   await pptx.writeFile({ fileName: `${dag.name.replace(/[^\w\s-]/g, '').trim()}.pptx` })
 }
