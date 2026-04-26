@@ -172,30 +172,34 @@ export interface FlowsViewOptions {
 
 // --- Security config ---
 
-// Instance d'un composant IAM (Identity Store, Role Management, Permission Management)
-// Pas de champ name — le nom du produit est le seul identifiant affiché
+export type IamRole = 'identityStore' | 'roleManagement' | 'permissionManagement'
+
+// Un composant IAM peut jouer plusieurs rôles (ex : Keycloak = Identity Store + Role Management)
 export interface IamInstance {
+  id: string
+  product?: string
+  roles: IamRole[]
+}
+
+// Instance d'un Auth Gateway — existence seulement, les relations sont dans securityRelations
+export interface AuthGatewayInstance {
   id: string
   product?: string
 }
 
-// Instance d'un Auth Gateway — peut y en avoir plusieurs (ex : externe + interne)
-export interface AuthGatewayInstance {
+// Relation entre deux nœuds du schéma de sécurité.
+// fromId / toId peuvent être : gateway id, IAM id, component id, ou ComponentInstance id
+export interface SecurityRelation {
   id: string
-  product?: string
-  userComponentIds: string[]       // composants Users qui s'authentifient via cette gateway
-  protectedComponentIds: string[]  // composants applicatifs protégés par cette gateway (authz)
-  identityStoreIds: string[]       // Identity Stores interrogés par cette gateway
-  roleManagementIds: string[]      // Role Management utilisés par cette gateway
+  fromId: string
+  toId: string
+  label?: string
 }
 
 export interface AuthnConfig {
   authGateways: AuthGatewayInstance[]
-  identityStores: IamInstance[]
-  roleManagements: IamInstance[]
-  permissionManagements: IamInstance[]
-  // Liens role management → permission management (N:M)
-  roleToPermLinks: Array<{ fromRoleId: string; toPermId: string }>
+  iamInstances: IamInstance[]
+  securityRelations: SecurityRelation[]  // source de vérité unique pour toutes les flèches
 }
 
 export interface SecurityConfig {
@@ -206,10 +210,8 @@ export interface SecurityConfig {
 export function defaultAuthnConfig(): AuthnConfig {
   return {
     authGateways: [],
-    identityStores: [],
-    roleManagements: [],
-    permissionManagements: [],
-    roleToPermLinks: [],
+    iamInstances: [],
+    securityRelations: [],
   }
 }
 

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, type AuthnConfig, type AuthGatewayInstance, type IamInstance, type SecurityConfig, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, defaultSecurityConfig, defaultAuthnConfig } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, type AuthnConfig, type AuthGatewayInstance, type IamInstance, type SecurityRelation, type SecurityConfig, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, defaultSecurityConfig, defaultAuthnConfig, type IamRole } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -53,54 +53,101 @@ function migrateSecurityConfig(raw: any): SecurityConfig {
   const authn = raw.authn
   if (!authn) return defaultSecurityConfig()
 
-  // Nouveau format : authGateways est déjà un tableau
-  if (Array.isArray(authn.authGateways)) {
+  function rel(fromId: string, toId: string, label?: string): SecurityRelation {
+    return { id: generateId(), fromId, toId, label }
+  }
+
+  // Format actuel : securityRelations[] déjà présent
+  if (Array.isArray(authn.securityRelations)) {
     return {
       authn: {
-        authGateways:         authn.authGateways         ?? [],
-        identityStores:       authn.identityStores       ?? [],
-        roleManagements:      authn.roleManagements      ?? [],
-        permissionManagements:authn.permissionManagements ?? [],
-        roleToPermLinks:      authn.roleToPermLinks       ?? [],
+        authGateways:      authn.authGateways      ?? [],
+        iamInstances:      authn.iamInstances       ?? [],
+        securityRelations: authn.securityRelations,
       },
     }
   }
 
-  // Ancien format : authGateway (singulier) avec flag enabled
-  const config = defaultSecurityConfig()
-
-  let gwInst: AuthGatewayInstance | null = null
-  if (authn.authGateway?.enabled) {
-    gwInst = {
-      id:                   generateId(),
-
-      product:              authn.authGateway.product,
-      userComponentIds:     authn.userComponentIds     ?? [],
-      protectedComponentIds:authn.protectedComponentIds ?? [],
-      identityStoreIds:     [],
-      roleManagementIds:    [],
+  // Format intermédiaire : iamInstances[] + champs sur les gateways + iamLinks
+  if (Array.isArray(authn.iamInstances)) {
+    const securityRelations: SecurityRelation[] = []
+    for (const gw of (authn.authGateways ?? []) as any[]) {
+      for (const uid of (gw.userComponentIds ?? []))      securityRelations.push(rel(uid, gw.id))
+      for (const iid of (gw.iamInstanceIds ?? []))        securityRelations.push(rel(gw.id, iid))
+      for (const pid of (gw.protectedComponentIds ?? [])) securityRelations.push(rel(gw.id, pid))
     }
-    config.authn.authGateways = [gwInst]
+    for (const l of (authn.iamLinks ?? []) as any[]) securityRelations.push(rel(l.fromId, l.toId))
+    const authGateways: AuthGatewayInstance[] = (authn.authGateways ?? []).map((gw: any) => ({
+      id: gw.id, product: gw.product,
+    }))
+    return { authn: { authGateways, iamInstances: authn.iamInstances, securityRelations } }
   }
 
-  if (authn.identityStore?.enabled) {
-    const inst: IamInstance = { id: generateId(), product: authn.identityStore.product }
-    config.authn.identityStores = [inst]
-    if (gwInst) gwInst.identityStoreIds = [inst.id]
+  // Format avec authGateways[] et listes IAM séparées
+  if (Array.isArray(authn.authGateways)) {
+    const iamInstances: IamInstance[] = []
+    const idMap = new Map<string, string>()
+
+    function mergeOrCreate(oldId: string, product: string | undefined, role: IamRole): string {
+      if (product) {
+        const existing = iamInstances.find((i) => i.product === product)
+        if (existing) {
+          if (!existing.roles.includes(role)) existing.roles.push(role)
+          idMap.set(oldId, existing.id)
+          return existing.id
+        }
+      }
+      const inst: IamInstance = { id: oldId, product, roles: [role] }
+      iamInstances.push(inst)
+      return oldId
+    }
+    for (const s of (authn.identityStores ?? []))        mergeOrCreate(s.id, s.product, 'identityStore')
+    for (const r of (authn.roleManagements ?? []))       mergeOrCreate(r.id, r.product, 'roleManagement')
+    for (const p of (authn.permissionManagements ?? [])) mergeOrCreate(p.id, p.product, 'permissionManagement')
+
+    const resolve = (id: string) => idMap.get(id) ?? id
+    const securityRelations: SecurityRelation[] = []
+    for (const gw of (authn.authGateways ?? []) as any[]) {
+      for (const uid of (gw.userComponentIds ?? []))      securityRelations.push(rel(uid, gw.id))
+      for (const sid of (gw.identityStoreIds ?? []))      securityRelations.push(rel(gw.id, resolve(sid)))
+      for (const rid of (gw.roleManagementIds ?? []))     securityRelations.push(rel(gw.id, resolve(rid)))
+      for (const pid of (gw.protectedComponentIds ?? [])) securityRelations.push(rel(gw.id, pid))
+    }
+    for (const l of (authn.roleToPermLinks ?? []) as any[])
+      securityRelations.push(rel(resolve(l.fromRoleId), resolve(l.toPermId)))
+
+    const authGateways: AuthGatewayInstance[] = (authn.authGateways ?? []).map((gw: any) => ({
+      id: gw.id, product: gw.product,
+    }))
+    return { authn: { authGateways, iamInstances, securityRelations } }
   }
 
-  let roleInst: IamInstance | null = null
-  if (authn.roleManagement?.enabled) {
-    roleInst = { id: generateId(), product: authn.roleManagement.product }
-    config.authn.roleManagements = [roleInst]
-    if (gwInst) gwInst.roleManagementIds = [roleInst.id]
+  // Très ancien format : authGateway (singulier) avec flag enabled
+  const config = defaultSecurityConfig()
+  let gwId: string | null = null
+
+  if (authn.authGateway?.enabled) {
+    gwId = generateId()
+    config.authn.authGateways = [{ id: gwId, product: authn.authGateway.product }]
   }
 
-  if (authn.permissionManagement?.enabled) {
-    const permInst: IamInstance = { id: generateId(), product: authn.permissionManagement.product }
-    config.authn.permissionManagements = [permInst]
-    if (roleInst) config.authn.roleToPermLinks = [{ fromRoleId: roleInst.id, toPermId: permInst.id }]
+  const securityRelations: SecurityRelation[] = []
+  const addIam = (enabled: boolean, product: string | undefined, role: IamRole): IamInstance | null => {
+    if (!enabled) return null
+    const inst: IamInstance = { id: generateId(), product, roles: [role] }
+    config.authn.iamInstances.push(inst)
+    if (gwId && role !== 'permissionManagement') securityRelations.push(rel(gwId, inst.id))
+    return inst
   }
+  if (gwId) {
+    for (const uid of (authn.userComponentIds ?? []))      securityRelations.push(rel(uid, gwId))
+    for (const pid of (authn.protectedComponentIds ?? [])) securityRelations.push(rel(gwId, pid))
+  }
+  const roleMgmt = addIam(authn.roleManagement?.enabled, authn.roleManagement?.product, 'roleManagement')
+  const permMgmt = addIam(authn.permissionManagement?.enabled, authn.permissionManagement?.product, 'permissionManagement')
+  addIam(authn.identityStore?.enabled, authn.identityStore?.product, 'identityStore')
+  if (roleMgmt && permMgmt) securityRelations.push(rel(roleMgmt.id, permMgmt.id))
+  config.authn.securityRelations = securityRelations
 
   return config
 }
