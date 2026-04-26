@@ -83,10 +83,15 @@ const dslReadOnlyFooter = computed(() => {
 })
 
 watch(dslEdit, (mode) => {
-  if (dslEdit && dag.value) {
+  if (mode && dag.value) {
     localRelationsBody.value = generateManualRelationsBody(dag.value)
     runValidation()
-  } else if (!dslEdit) {
+  } else if (!mode) {
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+    if (dag.value) {
+      const parsed = parseRelationsBody(localRelationsBody.value, dag.value)
+      store.replaceManualRelations(dag.value.id, parsed)
+    }
     syntaxError.value = null
     functionalResult.value = null
   }
@@ -97,7 +102,7 @@ watch(dslEdit, (mode) => {
 // En mode guidé  : généré depuis le modèle (dag.relations + autoSync)
 const activeDsl = computed(() => {
   if (!dag.value) return ''
-  if (dslEdit) {
+  if (dslEdit.value) {
     const parts = []
     if (dslFrontmatter.value) parts.push(dslFrontmatter.value)
     parts.push(generateComponentsBody(dag.value, false, true))
@@ -115,7 +120,7 @@ const functionalResult = ref<DslValidationResult | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 async function runValidation() {
-  if (!dslEdit || !dag.value) return
+  if (!dslEdit.value || !dag.value) return
   const fullCode = activeDsl.value
   if (!fullCode.trim()) { syntaxError.value = null; functionalResult.value = null; return }
 
