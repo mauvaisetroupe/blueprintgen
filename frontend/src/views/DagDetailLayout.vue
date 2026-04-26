@@ -19,7 +19,7 @@ const dag = computed(() => store.getDag(route.params.id as string))
 
 // ── Edit mode (guided | manual) — partagé entre les onglets via provide/inject ──
 const isDslEditDisabled = computed(() =>
-  route.path.endsWith('/components') || route.path.endsWith('/security'),
+  route.path.endsWith('/components') || route.path.endsWith('/technical-components') || route.path.endsWith('/security'),
 )
 
 const dslEdit = ref()
@@ -49,11 +49,12 @@ watch(dslEdit, (newValue) => {
 provide('dslEdit', dslEdit)
 
 const tabs = [
-  { label: 'Components',           route: 'components', value: '0' },
-  { label: 'Landscape',            route: 'landscape',  value: '1' },
-  { label: 'Application Flows',    route: 'flows',      value: '2' },
-  { label: 'Technical Landscape',  route: 'technical',  value: '3' },
-  { label: 'Security',             route: 'security',   value: '4' },
+  { label: 'Components',            route: 'components',           value: '0' },
+  { label: 'Landscape',             route: 'landscape',            value: '1' },
+  { label: 'Application Flows',     route: 'flows',                value: '2' },
+  { label: 'Technical Landscape',   route: 'technical',            value: '3' },
+  { label: 'Technical Components',  route: 'technical-components', value: '5' },
+  { label: 'Security',              route: 'security',             value: '4' },
 ]
 
 const exporting = ref(false)
