@@ -172,18 +172,30 @@ export interface FlowsViewOptions {
 
 // --- Security config ---
 
-export interface AuthComponent {
-  enabled: boolean
-  product?: string   // nom du produit (ex: Keycloak, LDAP, OPA…)
+// Instance d'un composant IAM (Identity Store, Role Management, Permission Management)
+// Pas de champ name — le nom du produit est le seul identifiant affiché
+export interface IamInstance {
+  id: string
+  product?: string
+}
+
+// Instance d'un Auth Gateway — peut y en avoir plusieurs (ex : externe + interne)
+export interface AuthGatewayInstance {
+  id: string
+  product?: string
+  userComponentIds: string[]       // composants Users qui s'authentifient via cette gateway
+  protectedComponentIds: string[]  // composants applicatifs protégés par cette gateway (authz)
+  identityStoreIds: string[]       // Identity Stores interrogés par cette gateway
+  roleManagementIds: string[]      // Role Management utilisés par cette gateway
 }
 
 export interface AuthnConfig {
-  authGateway:          AuthComponent
-  identityStore:        AuthComponent
-  roleManagement:       AuthComponent
-  permissionManagement: AuthComponent
-  userComponentIds:       string[]  // composants Users qui s'authentifient
-  protectedComponentIds:  string[]  // composants Frontend/Backend protégés par l'auth
+  authGateways: AuthGatewayInstance[]
+  identityStores: IamInstance[]
+  roleManagements: IamInstance[]
+  permissionManagements: IamInstance[]
+  // Liens role management → permission management (N:M)
+  roleToPermLinks: Array<{ fromRoleId: string; toPermId: string }>
 }
 
 export interface SecurityConfig {
@@ -193,12 +205,11 @@ export interface SecurityConfig {
 
 export function defaultAuthnConfig(): AuthnConfig {
   return {
-    authGateway:          { enabled: false },
-    identityStore:        { enabled: false },
-    roleManagement:       { enabled: false },
-    permissionManagement: { enabled: false },
-    userComponentIds:      [],
-    protectedComponentIds: [],
+    authGateways: [],
+    identityStores: [],
+    roleManagements: [],
+    permissionManagements: [],
+    roleToPermLinks: [],
   }
 }
 

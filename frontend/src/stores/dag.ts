@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, type AuthnConfig, type SecurityConfig, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, defaultSecurityConfig } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, type AuthnConfig, type AuthGatewayInstance, type IamInstance, type SecurityConfig, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, defaultSecurityConfig, defaultAuthnConfig } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -45,6 +45,64 @@ function migrateTechnicalLandscape(tl: any) {
     useElk:             tl?.useElk,
     categorySubgraphs:  tl?.categorySubgraphs,
   }
+}
+
+// Migration défensive : convertit l'ancien format SecurityConfig (authGateway singular) vers le nouveau (authGateways[])
+function migrateSecurityConfig(raw: any): SecurityConfig {
+  if (!raw) return defaultSecurityConfig()
+  const authn = raw.authn
+  if (!authn) return defaultSecurityConfig()
+
+  // Nouveau format : authGateways est déjà un tableau
+  if (Array.isArray(authn.authGateways)) {
+    return {
+      authn: {
+        authGateways:         authn.authGateways         ?? [],
+        identityStores:       authn.identityStores       ?? [],
+        roleManagements:      authn.roleManagements      ?? [],
+        permissionManagements:authn.permissionManagements ?? [],
+        roleToPermLinks:      authn.roleToPermLinks       ?? [],
+      },
+    }
+  }
+
+  // Ancien format : authGateway (singulier) avec flag enabled
+  const config = defaultSecurityConfig()
+
+  let gwInst: AuthGatewayInstance | null = null
+  if (authn.authGateway?.enabled) {
+    gwInst = {
+      id:                   generateId(),
+
+      product:              authn.authGateway.product,
+      userComponentIds:     authn.userComponentIds     ?? [],
+      protectedComponentIds:authn.protectedComponentIds ?? [],
+      identityStoreIds:     [],
+      roleManagementIds:    [],
+    }
+    config.authn.authGateways = [gwInst]
+  }
+
+  if (authn.identityStore?.enabled) {
+    const inst: IamInstance = { id: generateId(), product: authn.identityStore.product }
+    config.authn.identityStores = [inst]
+    if (gwInst) gwInst.identityStoreIds = [inst.id]
+  }
+
+  let roleInst: IamInstance | null = null
+  if (authn.roleManagement?.enabled) {
+    roleInst = { id: generateId(), product: authn.roleManagement.product }
+    config.authn.roleManagements = [roleInst]
+    if (gwInst) gwInst.roleManagementIds = [roleInst.id]
+  }
+
+  if (authn.permissionManagement?.enabled) {
+    const permInst: IamInstance = { id: generateId(), product: authn.permissionManagement.product }
+    config.authn.permissionManagements = [permInst]
+    if (roleInst) config.authn.roleToPermLinks = [{ fromRoleId: roleInst.id, toPermId: permInst.id }]
+  }
+
+  return config
 }
 
 // Migration défensive : convertit l'ancien format dag.categories vers customCategories + disabledCategoryIds
@@ -164,7 +222,7 @@ export const useDagStore = defineStore(
         disabledCategoryIds: catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
         components:         catMigration.components,
         technicalLandscape: migrateTechnicalLandscape(data.technicalLandscape),
-        securityConfig: (data as any).securityConfig ?? defaultSecurityConfig(),
+        securityConfig: migrateSecurityConfig((data as any).securityConfig),
       }
       dags.value.push(dag)
       return dag
@@ -289,6 +347,7 @@ export const useDagStore = defineStore(
           technicalServices:  [],
         },
         applicationFlows: [],
+        securityConfig: defaultSecurityConfig(),
       }
       dags.value.push(dag)
       return dag
@@ -309,6 +368,9 @@ export const useDagStore = defineStore(
         if (disabledCategoryIds.length > 0) dag.disabledCategoryIds = disabledCategoryIds
         dag.components = components
         delete rawDag.categories
+      }
+      if (!dag.securityConfig || !Array.isArray((dag.securityConfig.authn as any)?.authGateways)) {
+        dag.securityConfig = migrateSecurityConfig(dag.securityConfig as any)
       }
       return dag
     }
@@ -724,10 +786,10 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
-    function updateAuthnConfig(dagId: string, patch: Partial<AuthnConfig>) {
+    function updateAuthnConfig(dagId: string, config: AuthnConfig) {
       const dag = getDag(dagId)
       if (!dag) return
-      Object.assign(dag.securityConfig.authn, patch)
+      dag.securityConfig.authn = config
       dag.updatedAt = now()
     }
 
@@ -792,6 +854,14 @@ export const useDagStore = defineStore(
     }
   },
   {
-    persist: true,
+    persist: {
+      afterRestore(ctx: any) {
+        for (const dag of ctx.store.dags as Dag[]) {
+          if (dag.securityConfig) {
+            dag.securityConfig = migrateSecurityConfig(dag.securityConfig)
+          }
+        }
+      },
+    },
   },
 )
