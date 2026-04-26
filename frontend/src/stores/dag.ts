@@ -854,14 +854,6 @@ export const useDagStore = defineStore(
     }
   },
   {
-    persist: {
-      afterRestore(ctx: any) {
-        for (const dag of ctx.store.dags as Dag[]) {
-          if (dag.securityConfig) {
-            dag.securityConfig = migrateSecurityConfig(dag.securityConfig)
-          }
-        }
-      },
-    },
+    persist: true,
   },
 )
