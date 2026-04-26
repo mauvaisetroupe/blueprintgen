@@ -170,6 +170,42 @@ export interface FlowsViewOptions {
   subgraphCategoryIds?: string[]   // undefined = toutes les catégories activées
 }
 
+// --- Security config ---
+
+export interface AuthComponent {
+  enabled: boolean
+  product?: string   // nom du produit (ex: Keycloak, LDAP, OPA…)
+}
+
+export interface AuthnConfig {
+  authGateway:          AuthComponent
+  identityStore:        AuthComponent
+  roleManagement:       AuthComponent
+  permissionManagement: AuthComponent
+  userComponentIds:       string[]  // composants Users qui s'authentifient
+  protectedComponentIds:  string[]  // composants Frontend/Backend protégés par l'auth
+}
+
+export interface SecurityConfig {
+  authn: AuthnConfig
+  // apiGateway, waf, fileTransfer — à venir
+}
+
+export function defaultAuthnConfig(): AuthnConfig {
+  return {
+    authGateway:          { enabled: false },
+    identityStore:        { enabled: false },
+    roleManagement:       { enabled: false },
+    permissionManagement: { enabled: false },
+    userComponentIds:      [],
+    protectedComponentIds: [],
+  }
+}
+
+export function defaultSecurityConfig(): SecurityConfig {
+  return { authn: defaultAuthnConfig() }
+}
+
 // --- DAG root ---
 
 export interface Dag {
@@ -189,6 +225,7 @@ export interface Dag {
   landscape: Landscape
   technicalLandscape: TechnicalLandscape
   applicationFlows: ApplicationFlow[]
+  securityConfig: SecurityConfig
 }
 
 // --- Generic import format (used by external apps to pre-populate a DAG) ---

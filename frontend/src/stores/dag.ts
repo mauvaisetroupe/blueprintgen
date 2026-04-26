@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, type AuthnConfig, type SecurityConfig, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, defaultSecurityConfig } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -120,6 +120,7 @@ export const useDagStore = defineStore(
           technicalServices:  [],
         },
         applicationFlows: [],
+        securityConfig: defaultSecurityConfig(),
       }
       dags.value.push(dag)
       return dag
@@ -163,6 +164,7 @@ export const useDagStore = defineStore(
         disabledCategoryIds: catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
         components:         catMigration.components,
         technicalLandscape: migrateTechnicalLandscape(data.technicalLandscape),
+        securityConfig: (data as any).securityConfig ?? defaultSecurityConfig(),
       }
       dags.value.push(dag)
       return dag
@@ -722,6 +724,12 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
+    function updateAuthnConfig(dagId: string, patch: Partial<AuthnConfig>) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      Object.assign(dag.securityConfig.authn, patch)
+      dag.updatedAt = now()
+    }
 
     /** Remplace toutes les relations manuelles du landscape par celles parsées depuis l'éditeur DSL. */
     function replaceManualRelations(
@@ -780,6 +788,7 @@ export const useDagStore = defineStore(
       deleteTechnicalService,
       setTechnicalLandscapeUseElk,
       setTechnicalCategorySubgraph,
+      updateAuthnConfig,
     }
   },
   {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { computed } from 'vue'
+import AuthenticationView from '@/views/dag/security/AuthenticationView.vue'
 
 const route = useRoute()
 const store = useDagStore()
@@ -37,10 +37,7 @@ const activeSubTab = ref<SubTab>('authentication')
     <!-- Content -->
     <div class="security-content">
 
-      <div v-if="activeSubTab === 'authentication'" class="coming-soon">
-        <i class="pi pi-lock" />
-        <span>Authentication &amp; Authorization — coming soon.</span>
-      </div>
+      <AuthenticationView v-if="activeSubTab === 'authentication'" />
 
       <div v-else-if="activeSubTab === 'api-gateway'" class="coming-soon">
         <i class="pi pi-server" />
