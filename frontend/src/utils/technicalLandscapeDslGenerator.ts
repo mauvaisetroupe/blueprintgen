@@ -145,6 +145,30 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
     }
   }
 
+  // Relations impliquant au moins un composant technique (pas de relation business équivalente)
+  const techIds = new Set((dag.technicalComponents ?? []).map((c) => c.id))
+  const seenTechPairs = new Set<string>()
+  for (const tr of tl.technicalRelations) {
+    if (!techIds.has(tr.fromComponentId) && !techIds.has(tr.toComponentId)) continue
+    const pairKey = `${tr.fromInstanceId}->${tr.toInstanceId}`
+    if (seenTechPairs.has(pairKey)) continue
+    seenTechPairs.add(pairKey)
+
+    const fromComp = allComps(dag).find((c) => c.id === tr.fromComponentId)
+    const toComp   = allComps(dag).find((c) => c.id === tr.toComponentId)
+    if (!fromComp || !toComp) continue
+
+    const fromInst = instanceById.get(tr.fromInstanceId)
+    const toInst   = instanceById.get(tr.toInstanceId)
+    const fromIsMulti = (instancesByComponent.get(tr.fromComponentId)?.length ?? 0) > 1
+    const toIsMulti   = (instancesByComponent.get(tr.toComponentId)?.length   ?? 0) > 1
+    const fromZone = fromInst ? zones.find((z) => z.id === fromInst.networkZoneId) : undefined
+    const toZone   = toInst   ? zones.find((z) => z.id === toInst.networkZoneId)   : undefined
+    const fromId = fromZone ? nodeIdForInstance(fromComp.name, fromZone.name, fromIsMulti) : toNodeId(fromComp.name)
+    const toId   = toZone   ? nodeIdForInstance(toComp.name,   toZone.name,   toIsMulti)   : toNodeId(toComp.name)
+    lines.push(tr.protocol ? `  ${fromId} -->|${sanitizeLabel(tr.protocol)}| ${toId}` : `  ${fromId} --> ${toId}`)
+  }
+
   // Styles des zones : fond coloré + bordure pointillée
   for (const zoneNodeId of renderedZoneIds) {
     const zone = zones.find((z) => toNodeId(z.name) === zoneNodeId)
@@ -167,21 +191,10 @@ export function getEditableNodeIds(dag: Dag): Set<string> {
   const zones = allNetworkZones(tl)
   const instancesByComponent = buildInstancesByComponent(tl)
 
-  const involvedCompIds = new Set<string>()
-  for (const rel of buildRelationsToRender(dag)) {
-    const fromIsMulti = (instancesByComponent.get(rel.fromComponentId)?.length ?? 0) > 1
-    const toIsMulti   = (instancesByComponent.get(rel.toComponentId)?.length   ?? 0) > 1
-    if (fromIsMulti || toIsMulti) {
-      involvedCompIds.add(rel.fromComponentId)
-      involvedCompIds.add(rel.toComponentId)
-    }
-  }
-
   const nodeIds = new Set<string>()
-  for (const compId of involvedCompIds) {
-    const insts = instancesByComponent.get(compId) ?? []
-    const comp  = allComps(dag).find((c) => c.id === compId)
-    if (!comp) continue
+  for (const comp of allComps(dag)) {
+    const insts = instancesByComponent.get(comp.id) ?? []
+    if (insts.length === 0) continue
     const isMulti = insts.length > 1
     for (const inst of insts) {
       const zone = zones.find((z) => z.id === inst.networkZoneId)
@@ -194,17 +207,30 @@ export function getEditableNodeIds(dag: Dag): Set<string> {
 }
 
 /**
- * Retourne les clés de relations logiques autorisées dans la section éditable.
- * (au moins un côté multi-instance)
+ * Retourne les clés de relations autorisées dans l'éditeur DSL :
+ * - toutes les relations logiques business (dag.relations + autoSync flows)
+ * - toute paire impliquant au moins un composant technique (dag.technicalComponents) :
+ *   ces composants n'ont pas d'équivalent dans le landscape fonctionnel par définition.
  */
 function getEditableLogicalKeys(dag: Dag): Set<string> {
-  const instancesByComponent = buildInstancesByComponent(dag.technicalLandscape)
   const keys = new Set<string>()
+
+  // Relations business existantes
   for (const rel of buildRelationsToRender(dag)) {
-    const fromIsMulti = (instancesByComponent.get(rel.fromComponentId)?.length ?? 0) > 1
-    const toIsMulti   = (instancesByComponent.get(rel.toComponentId)?.length   ?? 0) > 1
-    if (fromIsMulti || toIsMulti) keys.add(`${rel.fromComponentId}->${rel.toComponentId}`)
+    keys.add(`${rel.fromComponentId}->${rel.toComponentId}`)
   }
+
+  // Toute paire dont au moins un côté est un composant technique
+  const techIds = new Set((dag.technicalComponents ?? []).map((c) => c.id))
+  const allInstantiatedIds = [...new Set(dag.technicalLandscape.instances.map((i) => i.componentId))]
+  for (const fromId of allInstantiatedIds) {
+    for (const toId of allInstantiatedIds) {
+      if (fromId !== toId && (techIds.has(fromId) || techIds.has(toId))) {
+        keys.add(`${fromId}->${toId}`)
+      }
+    }
+  }
+
   return keys
 }
 
@@ -259,22 +285,11 @@ export function generateTechnicalLandscapeCommentHeader(dag: Dag): string {
   const instancesByComponent = buildInstancesByComponent(tl)
   const lines: string[] = ['flowchart TB']
 
-  // Composants impliqués dans au moins une relation multi-instance
-  const involvedCompIds = new Set<string>()
-  for (const rel of buildRelationsToRender(dag)) {
-    const fromIsMulti = (instancesByComponent.get(rel.fromComponentId)?.length ?? 0) > 1
-    const toIsMulti   = (instancesByComponent.get(rel.toComponentId)?.length   ?? 0) > 1
-    if (fromIsMulti || toIsMulti) {
-      involvedCompIds.add(rel.fromComponentId)
-      involvedCompIds.add(rel.toComponentId)
-    }
-  }
-
+  // Tous les composants (business + techniques) ayant au moins une instance assignée
   const nodes: string[] = []
-  for (const compId of involvedCompIds) {
-    const insts = instancesByComponent.get(compId) ?? []
-    const comp  = allComps(dag).find((c) => c.id === compId)
-    if (!comp) continue
+  for (const comp of allComps(dag)) {
+    const insts = instancesByComponent.get(comp.id) ?? []
+    if (insts.length === 0) continue
     const isMulti = insts.length > 1
     for (const inst of insts) {
       const zone = zones.find((z) => z.id === inst.networkZoneId)
@@ -287,16 +302,10 @@ export function generateTechnicalLandscapeCommentHeader(dag: Dag): string {
   }
 
   if (nodes.length > 0) {
-    lines.push('  %% Available nodes (involved in multi-zone relations):')
+    lines.push('  %% Available nodes:')
     lines.push(...nodes)
   }
   lines.push('  %% Arrows: --> link  -->|label| labeled link')
-
-  const fixed = generateFixedRelationsBody(dag)
-  if (fixed.trim()) {
-    lines.push('  %% Fixed relations (single zone — not editable):')
-    lines.push(fixed)
-  }
 
   return lines.join('\n')
 }
@@ -391,11 +400,47 @@ export function generateFixedRelationsBody(dag: Dag): string {
 }
 
 /**
- * Flèches éditables : au moins un côté a plusieurs instances (choix de zone nécessaire).
- * Constituent le corps modifiable de l'éditeur DSL.
+ * Flèches éditables :
+ * - relations business multi-instance (choix de zone)
+ * - toutes les relations impliquant au moins un composant technique (stockées dans tl.technicalRelations)
  */
 export function generateTechnicalRelationsBody(dag: Dag): string {
-  return buildRelationLines(dag, true)
+  const tl = dag.technicalLandscape
+  const techIds = new Set((dag.technicalComponents ?? []).map((c) => c.id))
+  const zones = allNetworkZones(tl)
+  const instancesByComponent = buildInstancesByComponent(tl)
+  const instanceById = new Map(tl.instances.map((i) => [i.id, i]))
+
+  const lines: string[] = []
+
+  // Partie 1 : relations business multi-instance
+  const businessMulti = buildRelationLines(dag, true)
+  if (businessMulti.trim()) lines.push(businessMulti)
+
+  // Partie 2 : relations stockées impliquant au moins un composant technique
+  const seen = new Set<string>()
+  for (const tr of tl.technicalRelations) {
+    if (!techIds.has(tr.fromComponentId) && !techIds.has(tr.toComponentId)) continue
+    const key = `${tr.fromInstanceId}->${tr.toInstanceId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const fromComp = allComps(dag).find((c) => c.id === tr.fromComponentId)
+    const toComp   = allComps(dag).find((c) => c.id === tr.toComponentId)
+    if (!fromComp || !toComp) continue
+
+    const fromInst = instanceById.get(tr.fromInstanceId)
+    const toInst   = instanceById.get(tr.toInstanceId)
+    const fromIsMulti = (instancesByComponent.get(tr.fromComponentId)?.length ?? 0) > 1
+    const toIsMulti   = (instancesByComponent.get(tr.toComponentId)?.length   ?? 0) > 1
+    const fromZone = fromInst ? zones.find((z) => z.id === fromInst.networkZoneId) : undefined
+    const toZone   = toInst   ? zones.find((z) => z.id === toInst.networkZoneId)   : undefined
+    const fromId = fromZone ? nodeIdForInstance(fromComp.name, fromZone.name, fromIsMulti) : toNodeId(fromComp.name)
+    const toId   = toZone   ? nodeIdForInstance(toComp.name,   toZone.name,   toIsMulti)   : toNodeId(toComp.name)
+    lines.push(tr.protocol ? `  ${fromId} -->|${sanitizeLabel(tr.protocol)}| ${toId}` : `  ${fromId} --> ${toId}`)
+  }
+
+  return lines.join('\n')
 }
 
 function buildRelationLines(dag: Dag, multiOnly: boolean): string {

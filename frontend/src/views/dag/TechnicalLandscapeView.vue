@@ -3,7 +3,6 @@ import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { DEFAULT_ZONE_NAMES, DEFAULT_ZONE_COLORS, allNetworkZones, allCategories } from '@/types/dag'
-import type { ComponentInstance, TechnicalRelation } from '@/types/dag'
 import {
   generateTechnicalLandscapeDsl,
   generateTechnicalLandscapeStructure,
@@ -46,11 +45,19 @@ watch(useElk, (val) => { if (dag.value) store.setTechnicalLandscapeUseElk(dag.va
 // ── DSL edit mode (injecté depuis DagDetailLayout) ────────────────────────────
 const dslEdit = inject<Ref<boolean>>('dslEdit')!
 
-// Corps éditable des relations (mode DSL uniquement)
+// Corps éditable des relations : uniquement les relations multi-instance
 const localRelationsBody = ref(dag.value ? generateTechnicalRelationsBody(dag.value) : '')
 
-// Header read-only affiché dans l'éditeur : commentaires avec les node IDs disponibles
-const dslReadOnlyHeader = computed(() => dag.value ? generateTechnicalLandscapeCommentHeader(dag.value) : '')
+// Header read-only : commentaires (node IDs) + relations mono-instance (automatiques, pas de choix de zone)
+const dslRelationsReadOnlyHeader = computed(() => {
+  if (!dag.value) return ''
+  const parts: string[] = []
+  const comments = generateTechnicalLandscapeCommentHeader(dag.value)
+  if (comments.trim()) parts.push(comments)
+  const fixed = generateFixedRelationsBody(dag.value)
+  if (fixed.trim()) parts.push(fixed)
+  return parts.join('\n')
+})
 
 // Structure complète pour le rendu Mermaid (zones + composants + styles)
 const dslStructure = computed(() => dag.value ? generateTechnicalLandscapeStructure(dag.value) : '')
@@ -80,18 +87,6 @@ const completionNames = computed(() => {
 })
 
 // Y a-t-il au moins une relation avec un côté multi-instance ?
-const hasMultiInstanceRelations = computed(() => {
-  if (!dag.value) return false
-  const instancesByComponent = new Map<string, number>()
-  for (const inst of dag.value.technicalLandscape.instances)
-    instancesByComponent.set(inst.componentId, (instancesByComponent.get(inst.componentId) ?? 0) + 1)
-  const allComponents = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
-  const validIds = new Set(allComponents.filter((c) => c.name.trim() !== '').map((c) => c.id))
-  const rels = dag.value.relations.filter((r) => validIds.has(r.fromComponentId) && validIds.has(r.toComponentId))
-  return rels.some(
-    (r) => (instancesByComponent.get(r.fromComponentId) ?? 0) > 1 || (instancesByComponent.get(r.toComponentId) ?? 0) > 1,
-  )
-})
 
 // Validation DSL (mode éditeur)
 const syntaxError = ref<string | null>(null)
@@ -102,8 +97,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // DSL actif pour le rendu Mermaid
 const activeDsl = computed(() => {
   if (!dag.value) return ''
-  if (dslEdit?.value && activeTab.value === 'relations') {
-    // Structure complète (zones/subgraphs) + relations fixes + arrows éditées
+  if (activeTab.value === 'relations') {
     const parts = [dslStructure.value]
     const fixed = generateFixedRelationsBody(dag.value)
     if (fixed.trim()) parts.push(fixed)
@@ -111,14 +105,6 @@ const activeDsl = computed(() => {
     return parts.join('\n')
   }
   return generateTechnicalLandscapeDsl(dag.value)
-})
-
-watch(dslEdit, (mode) => {
-  if (mode && dag.value) {
-    localRelationsBody.value = generateTechnicalRelationsBody(dag.value)
-  }
-  syntaxError.value    = null
-  semanticErrors.value = []
 })
 
 async function runValidation() {
@@ -150,8 +136,6 @@ function onRelationsChange(value: string) {
   }, 400)
 }
 
-// --- DSL (mode guidé uniquement, pour rétrocompatibilité) ---
-const dsl = computed(() => dag.value ? generateTechnicalLandscapeDsl(dag.value) : '')
 
 // --- Composants groupés par catégorie (tab Components) — business + technical ---
 const categoriesWithComponents = computed(() => {
@@ -232,6 +216,57 @@ function zoneCheckboxStyle(name: string, checked: boolean): Record<string, strin
 
 // ─── Relations tab ────────────────────────────────────────────────────────────
 
+function compName(componentId: string): string {
+  return [...(dag.value?.components ?? []), ...(dag.value?.technicalComponents ?? [])]
+    .find((c) => c.id === componentId)?.name ?? componentId
+}
+
+function instZoneName(instanceId: string): string {
+  const inst = tl.value?.instances.find((i) => i.id === instanceId)
+  if (!inst) return ''
+  return zones.value.find((z) => z.id === inst.networkZoneId)?.name ?? ''
+}
+
+// Relations éditables : impliquant un composant technique OU au moins un côté multi-instance
+const editableRelations = computed(() => {
+  if (!tl.value || !dag.value) return []
+  const techIds = new Set((dag.value.technicalComponents ?? []).map((c) => c.id))
+  return tl.value.technicalRelations.filter((tr) => {
+    const fromIsMulti = (instancesByComponent.value.get(tr.fromComponentId)?.length ?? 0) > 1
+    const toIsMulti   = (instancesByComponent.value.get(tr.toComponentId)?.length   ?? 0) > 1
+    return techIds.has(tr.fromComponentId) || techIds.has(tr.toComponentId) || fromIsMulti || toIsMulti
+  })
+})
+
+// Liste de toutes les instances avec leur label "Composant [Zone]" pour les selects
+const allInstances = computed(() => {
+  if (!tl.value || !dag.value) return []
+  const allComps = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
+  return tl.value.instances.map((inst) => {
+    const comp = allComps.find((c) => c.id === inst.componentId)
+    const zone = zones.value.find((z) => z.id === inst.networkZoneId)
+    return { id: inst.id, label: `${comp?.name ?? '?'} [${zone?.name ?? '?'}]` }
+  })
+})
+
+interface AddRelState { fromInstanceId: string; toInstanceId: string; protocol: string }
+const addingRel = ref<AddRelState | null>(null)
+
+function startAddRel() {
+  const insts = allInstances.value
+  addingRel.value = { fromInstanceId: insts[0]?.id ?? '', toInstanceId: insts[1]?.id ?? insts[0]?.id ?? '', protocol: '' }
+}
+
+function submitAddRel() {
+  if (!dag.value || !addingRel.value) return
+  const { fromInstanceId, toInstanceId, protocol } = addingRel.value
+  const fromInst = tl.value?.instances.find((i) => i.id === fromInstanceId)
+  const toInst   = tl.value?.instances.find((i) => i.id === toInstanceId)
+  if (!fromInst || !toInst) return
+  store.addTechnicalRelation(dag.value.id, fromInst.componentId, toInst.componentId, fromInstanceId, toInstanceId, protocol.trim() || undefined)
+  addingRel.value = null
+}
+
 // Toutes les relations logiques (manual + autoSync), sans distinction de source
 const logicalRelations = computed(() => {
   if (!dag.value) return []
@@ -262,104 +297,25 @@ const logicalRelations = computed(() => {
   return result
 })
 
-// TechnicalRelations pour une relation logique donnée
-function technicalRelationsFor(fromCompId: string, toCompId: string): TechnicalRelation[] {
-  return tl.value?.technicalRelations.filter(
-    (tr) => tr.fromComponentId === fromCompId && tr.toComponentId === toCompId,
-  ) ?? []
-}
-
-// Instances d'un composant
-function instancesFor(componentId: string): ComponentInstance[] {
-  return tl.value?.instances.filter((i) => i.componentId === componentId) ?? []
-}
-
-// Nom d'une zone à partir de son ID
-function zoneName(zoneId: string): string {
-  return zones.value.find((z) => z.id === zoneId)?.name ?? zoneId
-}
-
-// Nom d'un composant à partir de son ID
-function compName(componentId: string): string {
-  const all = [...(dag.value?.components ?? []), ...(dag.value?.technicalComponents ?? [])]
-  return all.find((c) => c.id === componentId)?.name ?? componentId
-}
-
-// Une relation est-elle multi-zone (au moins un côté a 2+ instances) ?
-function isMultiZone(fromCompId: string, toCompId: string): boolean {
-  return instancesFor(fromCompId).length > 1 || instancesFor(toCompId).length > 1
-}
-
-// ── Ajout d'une TechnicalRelation ──
-
-interface AddingState {
-  fromComponentId: string
-  toComponentId: string
-  fromInstanceId: string
-  toInstanceId: string
-  protocol: string
-}
-
-const addingRelation = ref<AddingState | null>(null)
-
-function startAddRelation(fromCompId: string, toCompId: string) {
-  const fromInsts = instancesFor(fromCompId)
-  const toInsts   = instancesFor(toCompId)
-  addingRelation.value = {
-    fromComponentId: fromCompId,
-    toComponentId:   toCompId,
-    fromInstanceId:  fromInsts[0]?.id ?? '',
-    toInstanceId:    toInsts[0]?.id  ?? '',
-    protocol:        '',
-  }
-}
-
-function submitAddRelation() {
-  if (!dag.value || !addingRelation.value) return
-  const { fromComponentId, toComponentId, fromInstanceId, toInstanceId, protocol } = addingRelation.value
-  if (!fromInstanceId || !toInstanceId) return
-  store.addTechnicalRelation(
-    dag.value.id,
-    fromComponentId,
-    toComponentId,
-    fromInstanceId,
-    toInstanceId,
-    protocol.trim() || undefined,
-  )
-  addingRelation.value = null
-}
-
-function cancelAddRelation() {
-  addingRelation.value = null
-}
-
 // Auto-matérialise la première TechnicalRelation quand les deux côtés d'une relation logique
-// ont au moins une instance assignée. Ne se déclenche que sur les changements structurels
-// (ajout d'instance ou de relation), pas sur les suppressions de TechnicalRelations.
+// ont au moins une instance assignée.
 watch(
   [() => tl.value?.instances, () => dag.value?.relations?.length],
   () => {
     if (!dag.value) return
     for (const lr of logicalRelations.value) {
-      const fromInsts = instancesFor(lr.fromComponentId)
-      const toInsts   = instancesFor(lr.toComponentId)
+      const fromInsts = tl.value?.instances.filter((i) => i.componentId === lr.fromComponentId) ?? []
+      const toInsts   = tl.value?.instances.filter((i) => i.componentId === lr.toComponentId)   ?? []
       if (fromInsts.length === 0 || toInsts.length === 0) continue
-      if (technicalRelationsFor(lr.fromComponentId, lr.toComponentId).length > 0) continue
+      const existing = tl.value?.technicalRelations.filter(
+        (tr) => tr.fromComponentId === lr.fromComponentId && tr.toComponentId === lr.toComponentId,
+      ) ?? []
+      if (existing.length > 0) continue
       store.addTechnicalRelation(dag.value.id, lr.fromComponentId, lr.toComponentId, fromInsts[0]!.id, toInsts[0]!.id)
     }
   },
   { immediate: true },
 )
-
-function deletePhysicalRelation(relId: string) {
-  if (!dag.value) return
-  store.deleteTechnicalRelation(dag.value.id, relId)
-}
-
-function updateProtocol(relId: string, value: string) {
-  if (!dag.value) return
-  store.updateTechnicalRelation(dag.value.id, relId, { protocol: value.trim() || undefined })
-}
 
 // --- Export ---
 const exportMenu = ref()
@@ -505,97 +461,76 @@ async function copyMermaid() {
 
               <!-- Mode DSL -->
               <template v-if="dslEdit">
-                <div v-if="!hasMultiInstanceRelations" class="dsl-no-multi-zone">
-                  <i class="pi pi-info-circle" />
-                  No component is deployed in multiple zones. All relations are induced from the application landscape.
+                <DslEditor
+                  :model-value="localRelationsBody"
+                  :read-only-header="dslRelationsReadOnlyHeader"
+                  :completion-names="completionNames"
+                  :validation-status="syntaxError ? 'syntax-error' : semanticErrors.length > 0 ? 'warnings' : isValidating ? 'validating' : 'idle'"
+                  @update:model-value="onRelationsChange"
+                />
+                <div v-if="syntaxError" class="dsl-error-bar">
+                  <i class="pi pi-times-circle" /> {{ syntaxError }}
                 </div>
-                <template v-else>
-                  <DslEditor
-                    :model-value="localRelationsBody"
-                    :read-only-header="dslReadOnlyHeader"
-                    :completion-names="completionNames"
-                    :validation-status="syntaxError ? 'syntax-error' : semanticErrors.length > 0 ? 'warnings' : isValidating ? 'validating' : 'idle'"
-                    @update:model-value="onRelationsChange"
-                  />
-                  <div v-if="syntaxError" class="dsl-error-bar">
-                    <i class="pi pi-times-circle" /> {{ syntaxError }}
+                <div v-if="semanticErrors.length > 0 && !syntaxError" class="dsl-warning-bar">
+                  <div v-for="(err, i) in semanticErrors" :key="i">
+                    <i class="pi pi-exclamation-triangle" /> {{ err }}
                   </div>
-                  <div v-if="semanticErrors.length > 0 && !syntaxError" class="dsl-warning-bar">
-                    <div v-for="(err, i) in semanticErrors" :key="i">
-                      <i class="pi pi-exclamation-triangle" /> {{ err }}
-                    </div>
-                  </div>
-                </template>
+                </div>
               </template>
 
               <!-- Mode guidé -->
               <template v-else>
-                <p v-if="!hasMultiInstanceRelations && logicalRelations.length > 0" class="empty-state no-multi-zone">
-                  No component is deployed in multiple zones. All relations are induced from the application landscape.
-                </p>
-                <p v-else-if="logicalRelations.length === 0" class="empty-state">
-                  No logical relations yet. Add relations in the Application Landscape<span v-if="!dag.landscape.autoSync"> or enable AutoSync</span>.
+                <p v-if="editableRelations.length === 0" class="empty-state">
+                  No editable relations yet. Assign components to zones, then add relations below.
                 </p>
 
-                <div v-for="lr in logicalRelations" :key="`${lr.fromComponentId}->${lr.toComponentId}`" class="rel-block">
-                  <div class="rel-header">
-                    <span class="rel-comp">{{ compName(lr.fromComponentId) }}</span>
-                    <span class="rel-arrow">→</span>
-                    <span class="rel-comp">{{ compName(lr.toComponentId) }}</span>
-                    <span v-if="instancesFor(lr.fromComponentId).length === 0 || instancesFor(lr.toComponentId).length === 0"
-                      class="rel-badge warn" title="One or both components have no zone assigned">⚠ no zone</span>
-                    <div class="rel-header-spacer" />
-                    <Button v-if="isMultiZone(lr.fromComponentId, lr.toComponentId)" icon="pi pi-plus" size="small" text severity="secondary" title="Add instance pair"
-                      @click="startAddRelation(lr.fromComponentId, lr.toComponentId)" />
-                  </div>
+                <table v-if="editableRelations.length > 0" class="rel-table">
+                  <thead>
+                    <tr>
+                      <th>From</th>
+                      <th class="col-zone">Zone</th>
+                      <th class="col-arrow"></th>
+                      <th>To</th>
+                      <th class="col-zone">Zone</th>
+                      <th class="col-proto">Protocol</th>
+                      <th class="col-action"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="tr in editableRelations" :key="tr.id">
+                      <td class="cell-name">{{ compName(tr.fromComponentId) }}</td>
+                      <td><span class="zone-pill">{{ instZoneName(tr.fromInstanceId) }}</span></td>
+                      <td class="col-arrow">→</td>
+                      <td class="cell-name">{{ compName(tr.toComponentId) }}</td>
+                      <td><span class="zone-pill">{{ instZoneName(tr.toInstanceId) }}</span></td>
+                      <td>
+                        <input class="cell-input protocol-input" :value="tr.protocol ?? ''" placeholder="Protocol"
+                          @change="store.updateTechnicalRelation(dag!.id, tr.id, { protocol: ($event.target as HTMLInputElement).value.trim() || undefined })" />
+                      </td>
+                      <td>
+                        <Button icon="pi pi-times" size="small" text severity="danger" @click="store.deleteTechnicalRelation(dag!.id, tr.id)" />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
 
-                  <div v-for="tr in technicalRelationsFor(lr.fromComponentId, lr.toComponentId)" :key="tr.id" class="rel-row">
-                    <template v-if="instancesFor(lr.fromComponentId).length <= 1">
-                      <span class="zone-pill">{{ zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? '') }}</span>
-                    </template>
-                    <template v-else>
-                      <select :value="tr.fromInstanceId" class="zone-select"
-                        @change="store.updateTechnicalRelation(dag!.id, tr.id, { fromInstanceId: ($event.target as HTMLSelectElement).value })">
-                        <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
-                      </select>
-                    </template>
-                    <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-                    <span class="rel-arrow-sm">→</span>
-                    <template v-if="instancesFor(lr.toComponentId).length <= 1">
-                      <span class="zone-pill">{{ zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? '') }}</span>
-                    </template>
-                    <template v-else>
-                      <select :value="tr.toInstanceId" class="zone-select"
-                        @change="store.updateTechnicalRelation(dag!.id, tr.id, { toInstanceId: ($event.target as HTMLSelectElement).value })">
-                        <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
-                      </select>
-                    </template>
-                    <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-                    <input class="cell-input protocol-input"
-                      :value="tr.protocol ?? ''"
-                      :placeholder="lr.protocol ?? 'Protocol'"
-                      @change="updateProtocol(tr.id, ($event.target as HTMLInputElement).value)" />
-                    <Button icon="pi pi-times" size="small" text severity="danger" @click="deletePhysicalRelation(tr.id)" />
-                  </div>
-
-                  <div v-if="addingRelation?.fromComponentId === lr.fromComponentId && addingRelation?.toComponentId === lr.toComponentId" class="rel-add-form">
-                    <select v-model="addingRelation.fromInstanceId" class="zone-select">
-                      <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
-                    </select>
-                    <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-                    <span class="rel-arrow-sm">→</span>
-                    <select v-model="addingRelation.toInstanceId" class="zone-select">
-                      <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
-                    </select>
-                    <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-                    <input v-model="addingRelation.protocol" class="cell-input protocol-input" placeholder="Protocol" @keyup.enter="submitAddRelation" @keyup.escape="cancelAddRelation" />
-                    <span class="rel-actions">
-                      <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
-                      <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
-                    </span>
-                  </div>
+                <!-- Formulaire d'ajout -->
+                <div v-if="addingRel" class="add-rel-form">
+                  <select v-model="addingRel.fromInstanceId" class="inst-select">
+                    <option v-for="inst in allInstances" :key="inst.id" :value="inst.id">{{ inst.label }}</option>
+                  </select>
+                  <span class="rel-arrow-sm">→</span>
+                  <select v-model="addingRel.toInstanceId" class="inst-select">
+                    <option v-for="inst in allInstances" :key="inst.id" :value="inst.id">{{ inst.label }}</option>
+                  </select>
+                  <input v-model="addingRel.protocol" class="cell-input protocol-input" placeholder="Protocol"
+                    @keyup.enter="submitAddRel" @keyup.escape="addingRel = null" />
+                  <Button icon="pi pi-check" size="small" @click="submitAddRel" />
+                  <Button icon="pi pi-times" size="small" severity="secondary" @click="addingRel = null" />
                 </div>
+                <Button v-else label="Add relation" icon="pi pi-plus" size="small" text class="add-rel-btn" @click="startAddRel" />
               </template>
+
             </TabPanel>
 
           </TabPanels>
@@ -713,23 +648,6 @@ async function copyMermaid() {
   flex-shrink: 0;
 }
 
-.dsl-no-multi-zone {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1.25rem 1.5rem;
-  color: var(--p-text-muted-color);
-  font-style: italic;
-  font-size: 0.875rem;
-  background: var(--p-surface-50, #fafafa);
-  border-bottom: 1px solid var(--p-content-border-color);
-  flex-shrink: 0;
-}
-
-.empty-state.no-multi-zone {
-  font-style: italic;
-  color: var(--p-text-muted-color);
-}
 
 /* ── Sections communes ── */
 .tech-sections {
@@ -817,110 +735,48 @@ async function copyMermaid() {
 .zone-checkbox-label input[type="checkbox"] { display: none; }
 .zone-checkbox-label.active { background: var(--p-primary-100, #dbeafe); border-color: var(--p-primary-400, #60a5fa); color: var(--p-primary-700, #1d4ed8); font-weight: 600; }
 
-/* ── Relations tab ── */
-.rel-block {
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 8px;
-  overflow: hidden;
-}
 
-.rel-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  background: var(--p-surface-50, #fafafa);
+/* ── Relations guided mode ── */
+.rel-table { width: 100%; border-collapse: collapse; }
+.rel-table thead th {
+  text-align: left; font-size: 0.75rem; font-weight: 600; color: var(--p-text-muted-color);
+  padding: 0.3rem 0.5rem; background: var(--p-surface-50, #fafafa);
   border-bottom: 1px solid var(--p-content-border-color);
-  min-height: 38px;
+  text-transform: uppercase; letter-spacing: 0.05em;
 }
+.rel-table tbody tr:hover { background: var(--p-surface-50, #fafafa); }
+.rel-table td { padding: 3px 4px; border-bottom: 1px solid var(--p-content-border-color); vertical-align: middle; }
+.rel-table tbody tr:last-child td { border-bottom: none; }
+.col-zone  { width: 90px; }
+.col-arrow { width: 24px; text-align: center; color: var(--p-text-muted-color); font-size: 0.85rem; }
+.col-proto { width: 120px; }
+.col-action { width: 32px; }
 
-.rel-block:last-child .rel-header:last-child { border-bottom: none; }
-
-.rel-comp { font-weight: 500; font-size: 0.875rem; }
-.rel-arrow { color: var(--p-text-muted-color); font-size: 0.9rem; }
-.rel-arrow-sm { color: var(--p-text-muted-color); font-size: 0.8rem; flex-shrink: 0; }
-.rel-header-spacer { flex: 1; }
-
-.rel-badge {
-  font-size: 0.72rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  font-weight: 600;
+.zone-pill {
+  display: inline-block;
+  font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 20px;
+  border: 1px solid #86efac; background: #f0fdf4; color: #064e3b;
+  white-space: nowrap;
 }
-.rel-badge.warn { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
 .protocol-input {
-  width: 100%;
-  border: 1px solid var(--p-content-border-color) !important;
-  border-radius: 4px;
-  background: var(--p-surface-0, #fff) !important;
-  padding: 0.25rem 0.4rem !important;
-  font-size: 0.8rem !important;
+  width: 100%; border: 1px solid var(--p-content-border-color) !important;
+  border-radius: 4px; background: var(--p-surface-0, #fff) !important;
+  padding: 0.25rem 0.4rem !important; font-size: 0.8rem !important;
 }
 .protocol-input:focus { border-color: var(--p-primary-400, #60a5fa) !important; box-shadow: none !important; }
 
-/* Grille partagée : comp-from | zone-from | → | comp-to | zone-to | protocol | action
-   Toutes les lignes (rel-row ET rel-add-form) utilisent exactement ces colonnes pour un
-   alignement parfait entre les cas simple, multi-zone et formulaire d'ajout. */
-.rel-row,
-.rel-add-form {
-  display: grid;
-  grid-template-columns: 110px 1fr 18px 110px 1fr 110px 30px;
-  align-items: center;
-  column-gap: 0.4rem;
-  padding: 0.3rem 0.75rem;
-  border-bottom: 1px solid var(--p-content-border-color);
+.add-rel-form {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 0; flex-wrap: wrap;
 }
-.rel-row:last-of-type { border-bottom: none; }
-
-.rel-add-form {
-  background: var(--p-surface-50, #fafafa);
-  border-top: 1px dashed var(--p-content-border-color);
-  border-bottom: none;
+.inst-select {
+  font-size: 0.8rem; font-family: inherit;
+  padding: 0.25rem 0.5rem; border: 1px solid var(--p-content-border-color);
+  border-radius: 4px; background: var(--p-surface-0, #fff); flex: 1; min-width: 150px;
 }
-
-.rel-comp-sm {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--p-text-muted-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.zone-pill {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 20px;
-  border: 1px solid #86efac;
-  background: #f0fdf4;
-  color: #064e3b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
-}
-
-.rel-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  grid-column: 7;  /* occupe la colonne action même si 2 boutons */
-}
-
-.zone-select {
-  width: 100%;
-  font-size: 0.75rem;
-  font-family: inherit;
-  padding: 0.15rem 1.2rem 0.15rem 0.5rem;
-  border: 1px solid #86efac;
-  border-radius: 20px;
-  background: #f0fdf4 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23059669'/%3E%3C/svg%3E") no-repeat right 0.45rem center;
-  color: #064e3b;
-  cursor: pointer;
-  appearance: none;
-  text-align: left;
-}
+.rel-arrow-sm { color: var(--p-text-muted-color); flex-shrink: 0; }
+.add-rel-btn { align-self: flex-start; }
 
 /* ── Diagram panel ── */
 .diagram-toolbar {
