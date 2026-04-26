@@ -47,6 +47,11 @@ const router = createRouter({
           name: 'dag-flows',
           component: () => import('@/views/dag/ApplicationFlowsView.vue'),
         },
+        {
+          path: 'security',
+          name: 'dag-security',
+          component: () => import('@/views/dag/SecurityView.vue'),
+        },
       ],
     },
   ],

@@ -18,7 +18,9 @@ const { dslEditPreference } = storeToRefs(store)
 const dag = computed(() => store.getDag(route.params.id as string))
 
 // ── Edit mode (guided | manual) — partagé entre les onglets via provide/inject ──
-const isComponents = computed(() => route.path.endsWith('/components'))
+const isDslEditDisabled = computed(() =>
+  route.path.endsWith('/components') || route.path.endsWith('/security'),
+)
 
 const dslEdit = ref()
 
@@ -26,12 +28,12 @@ onMounted(() => {
   setDslEdit()
 })
 
-watch(isComponents, () => {
+watch(isDslEditDisabled, () => {
   setDslEdit()
 })
 
 function setDslEdit() {
-  if (isComponents.value) {
+  if (isDslEditDisabled.value) {
     dslEdit.value = false
   } else {
     dslEdit.value = dslEditPreference.value
@@ -39,7 +41,7 @@ function setDslEdit() {
 }
 
 watch(dslEdit, (newValue) => {
-  if (!isComponents.value) {
+  if (!isDslEditDisabled.value) {
     store.setDslEditPreference(newValue)
   }
 })
@@ -51,6 +53,7 @@ const tabs = [
   { label: 'Landscape',            route: 'landscape',  value: '1' },
   { label: 'Application Flows',    route: 'flows',      value: '2' },
   { label: 'Technical Landscape',  route: 'technical',  value: '3' },
+  { label: 'Security',             route: 'security',   value: '4' },
 ]
 
 const exporting = ref(false)
@@ -99,7 +102,7 @@ function saveLocally() {
         <div class="elk-toggle">
           <ToggleSwitch
             v-model="dslEdit"
-            :disabled="isComponents"
+            :disabled="isDslEditDisabled"
             size="small"
             input-id="dsl-switch"
           />
@@ -191,7 +194,8 @@ function saveLocally() {
 .tab-content:has(> .landscape),
 .tab-content:has(> .flows),
 .tab-content:has(> .components),
-.tab-content:has(> .technical) {
+.tab-content:has(> .technical),
+.tab-content:has(> .security) {
   padding: 0;
   overflow: hidden;
   height: calc(100vh - var(--header-h) - var(--tabs-h));

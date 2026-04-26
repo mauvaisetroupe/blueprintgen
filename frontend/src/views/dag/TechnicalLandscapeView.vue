@@ -32,7 +32,7 @@ const dag = computed(() => store.getDag(route.params.id as string))
 const tl  = computed(() => dag.value?.technicalLandscape)
 
 // --- Active tab ---
-type Tab = 'components' | 'relations' | 'services' | 'security'
+type Tab = 'components' | 'relations' | 'services'
 const activeTab = ref<Tab>('components')
 
 // --- Toggle ELK ---
@@ -411,7 +411,6 @@ async function copyMermaid() {
           <span v-if="logicalRelations.length" class="tab-badge">{{ logicalRelations.length }}</span>
         </button>
         <button :class="['tab', { active: activeTab === 'services' }]" @click="activeTab = 'services'">Services</button>
-        <button :class="['tab', { active: activeTab === 'security' }]" @click="activeTab = 'security'">Security</button>
       </div>
       <div class="toolbar-spacer" />
       <Button label="Export" icon="pi pi-download" size="small" severity="secondary" @click="exportMenu?.toggle($event)" />
@@ -603,11 +602,6 @@ async function copyMermaid() {
         <!-- ── TAB : Services ── -->
         <div v-else-if="activeTab === 'services'" class="tech-sections">
           <p class="empty-state coming-soon">Technical Services — coming soon.</p>
-        </div>
-
-        <!-- ── TAB : Security ── -->
-        <div v-else-if="activeTab === 'security'" class="tech-sections">
-          <p class="empty-state coming-soon">Security (AuthN/AuthZ, API Gateway, WAF) — coming soon.</p>
         </div>
 
         </template> <!-- end v-else (guided mode) -->
