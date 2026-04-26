@@ -23,6 +23,11 @@ import InputText from 'primevue/inputtext'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import ToggleSwitch from 'primevue/toggleswitch'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
 import mermaid from 'mermaid'
 
 const route = useRoute()
@@ -32,8 +37,7 @@ const dag = computed(() => store.getDag(route.params.id as string))
 const tl  = computed(() => dag.value?.technicalLandscape)
 
 // --- Active tab ---
-type Tab = 'components' | 'relations' | 'services'
-const activeTab = ref<Tab>('components')
+const activeTab = ref<string>('components')
 
 // --- Toggle ELK ---
 const useElk = ref(dag.value?.technicalLandscape.useElk ?? false)
@@ -81,7 +85,8 @@ const hasMultiInstanceRelations = computed(() => {
   const instancesByComponent = new Map<string, number>()
   for (const inst of dag.value.technicalLandscape.instances)
     instancesByComponent.set(inst.componentId, (instancesByComponent.get(inst.componentId) ?? 0) + 1)
-  const validIds = new Set(dag.value.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
+  const allComponents = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
+  const validIds = new Set(allComponents.filter((c) => c.name.trim() !== '').map((c) => c.id))
   const rels = dag.value.relations.filter((r) => validIds.has(r.fromComponentId) && validIds.has(r.toComponentId))
   return rels.some(
     (r) => (instancesByComponent.get(r.fromComponentId) ?? 0) > 1 || (instancesByComponent.get(r.toComponentId) ?? 0) > 1,
@@ -230,7 +235,8 @@ function zoneCheckboxStyle(name: string, checked: boolean): Record<string, strin
 // Toutes les relations logiques (manual + autoSync), sans distinction de source
 const logicalRelations = computed(() => {
   if (!dag.value) return []
-  const valid = new Set(dag.value.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
+  const allComponents = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
+  const valid = new Set(allComponents.filter((c) => c.name.trim() !== '').map((c) => c.id))
   const seen  = new Set<string>()
   const result: Array<{ fromComponentId: string; toComponentId: string; protocol?: string }> = []
 
@@ -275,7 +281,8 @@ function zoneName(zoneId: string): string {
 
 // Nom d'un composant à partir de son ID
 function compName(componentId: string): string {
-  return dag.value?.components.find((c) => c.id === componentId)?.name ?? componentId
+  const all = [...(dag.value?.components ?? []), ...(dag.value?.technicalComponents ?? [])]
+  return all.find((c) => c.id === componentId)?.name ?? componentId
 }
 
 // Une relation est-elle multi-zone (au moins un côté a 2+ instances) ?
@@ -408,209 +415,191 @@ async function copyMermaid() {
 <template>
   <div v-if="dag && tl" class="technical">
 
-    <!-- Toolbar : tabs + export -->
-    <div class="toolbar">
-      <div class="tabs">
-        <button :class="['tab', { active: activeTab === 'components' }]" @click="activeTab = 'components'">Components</button>
-        <button :class="['tab', { active: activeTab === 'relations' }]" @click="activeTab = 'relations'">
-          Relations
-          <span v-if="logicalRelations.length" class="tab-badge">{{ logicalRelations.length }}</span>
-        </button>
-        <button :class="['tab', { active: activeTab === 'services' }]" @click="activeTab = 'services'">Services</button>
-      </div>
-      <div class="toolbar-spacer" />
-      <Button label="Export" icon="pi pi-download" size="small" severity="secondary" @click="exportMenu?.toggle($event)" />
-      <Menu ref="exportMenu" :model="exportMenuItems" popup />
-    </div>
-
     <Splitter class="tech-splitter" state-key="technical-splitter" state-storage="local">
 
-      <!-- Panneau gauche : éditeur DSL (Relations + DSL Edit actif) ou tabs (mode guidé) -->
-      <SplitterPanel :size="55" :min-size="30" :class="dslEdit && activeTab === 'relations' ? 'tech-dsl-panel' : 'tech-left-panel'">
+      <!-- Panneau gauche : tabs PrimeVue -->
+      <SplitterPanel :size="55" :min-size="30" class="tech-left-panel">
+        <Tabs v-model:value="activeTab" class="tech-tabs">
+          <TabList>
+            <Tab value="components">Components</Tab>
+            <Tab value="relations">
+              Relations
+              <span v-if="logicalRelations.length" class="tab-badge">{{ logicalRelations.length }}</span>
+            </Tab>
+          </TabList>
 
-        <!-- ── Mode DSL (uniquement sur l'onglet Relations) ── -->
-        <template v-if="dslEdit && activeTab === 'relations'">
-          <div v-if="!hasMultiInstanceRelations" class="dsl-no-multi-zone">
-            <i class="pi pi-info-circle" />
-            No component is deployed in multiple zones. All relations are induced from the application landscape.
-          </div>
-          <template v-else>
-            <DslEditor
-              :model-value="localRelationsBody"
-              :read-only-header="dslReadOnlyHeader"
-              :completion-names="completionNames"
-              :validation-status="syntaxError ? 'syntax-error' : semanticErrors.length > 0 ? 'warnings' : isValidating ? 'validating' : 'idle'"
-              @update:model-value="onRelationsChange"
-            />
-            <div v-if="syntaxError" class="dsl-error-bar">
-              <i class="pi pi-times-circle" /> {{ syntaxError }}
-            </div>
-            <div v-if="semanticErrors.length > 0 && !syntaxError" class="dsl-warning-bar">
-              <div v-for="(err, i) in semanticErrors" :key="i">
-                <i class="pi pi-exclamation-triangle" /> {{ err }}
+          <TabPanels class="tech-tab-panels">
+
+            <!-- ── TAB : Components ── -->
+            <TabPanel value="components" class="tech-sections">
+
+              <!-- Section zones réseau -->
+              <div class="section-block">
+                <div class="section-header">
+                  <h4>Network Zones</h4>
+                  <Button icon="pi pi-plus" size="small" text severity="secondary" title="Add zone" @click="addingZone = true" />
+                </div>
+                <div class="zones-list">
+                  <span v-for="zone in zones" :key="zone.id" class="zone-tag" :style="zoneStyle(zone.name)">
+                    {{ zone.name }}
+                    <button v-if="!isDefaultZone(zone.name)" class="zone-delete" title="Delete zone" @click="store.deleteNetworkZone(dag!.id, zone.id)">×</button>
+                  </span>
+                </div>
+                <div v-if="addingZone" class="add-zone-form">
+                  <InputText v-model="newZoneName" placeholder="Zone name" size="small" autofocus @keyup.enter="submitAddZone" @keyup.escape="addingZone = false" />
+                  <Button icon="pi pi-check" size="small" @click="submitAddZone" />
+                  <Button icon="pi pi-times" size="small" severity="secondary" @click="addingZone = false" />
+                </div>
               </div>
-            </div>
-          </template>
-        </template>
 
-        <!-- ── Mode guidé : contenu du tab actif ── -->
-        <template v-else>
+              <!-- Spreadsheet par catégorie -->
+              <div v-for="group in categoriesWithComponents" :key="group.category.id" class="section-block">
+                <div class="section-header">
+                  <span class="category-title">{{ group.category.name }}</span>
+                </div>
+                <table class="sheet">
+                  <thead>
+                    <tr>
+                      <th class="col-name">Component</th>
+                      <th class="col-tech">Technology</th>
+                      <th class="col-fw">Framework</th>
+                      <th class="col-constraints">Constraints</th>
+                      <th class="col-zones">Network Zone(s)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="comp in group.components" :key="comp.id">
+                      <td class="col-name cell-name">{{ comp.name }}</td>
+                      <td>
+                        <input class="cell-input" :value="comp.technology ?? ''" placeholder="e.g. Java"
+                          @change="updateComponent(comp.id, { technology: ($event.target as HTMLInputElement).value.trim() || undefined })" />
+                      </td>
+                      <td>
+                        <input class="cell-input" :value="comp.framework ?? ''" placeholder="e.g. Spring Boot"
+                          @change="updateComponent(comp.id, { framework: ($event.target as HTMLInputElement).value.trim() || undefined })" />
+                      </td>
+                      <td>
+                        <input class="cell-input" :value="comp.constraints ?? ''" placeholder="e.g. stateless"
+                          @change="updateComponent(comp.id, { constraints: ($event.target as HTMLInputElement).value.trim() || undefined })" />
+                      </td>
+                      <td class="col-zones">
+                        <div class="zone-checkboxes">
+                          <label v-for="zone in zones" :key="zone.id" class="zone-checkbox-label"
+                            :class="{ active: instancesByComponent.get(comp.id)?.includes(zone.id) }"
+                            :style="zoneCheckboxStyle(zone.name, instancesByComponent.get(comp.id)?.includes(zone.id) ?? false)">
+                            <input type="checkbox" :checked="instancesByComponent.get(comp.id)?.includes(zone.id)" @change="toggleZone(comp.id, zone.id)" />
+                            {{ zone.name }}
+                          </label>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-        <!-- ── TAB : Components ── -->
-        <div v-if="activeTab === 'components'" class="tech-sections">
+              <p v-if="categoriesWithComponents.length === 0" class="empty-state">No components yet.</p>
+            </TabPanel>
 
-          <!-- Section zones réseau -->
-          <div class="section-block">
-            <div class="section-header">
-              <h4>Network Zones</h4>
-              <Button icon="pi pi-plus" size="small" text severity="secondary" title="Add zone" @click="addingZone = true" />
-            </div>
-            <div class="zones-list">
-              <span v-for="zone in zones" :key="zone.id" class="zone-tag" :style="zoneStyle(zone.name)">
-                {{ zone.name }}
-                <button v-if="!isDefaultZone(zone.name)" class="zone-delete" title="Delete zone" @click="store.deleteNetworkZone(dag!.id, zone.id)">×</button>
-              </span>
-            </div>
-            <div v-if="addingZone" class="add-zone-form">
-              <InputText v-model="newZoneName" placeholder="Zone name" size="small" autofocus @keyup.enter="submitAddZone" @keyup.escape="addingZone = false" />
-              <Button icon="pi pi-check" size="small" @click="submitAddZone" />
-              <Button icon="pi pi-times" size="small" severity="secondary" @click="addingZone = false" />
-            </div>
-          </div>
+            <!-- ── TAB : Relations ── -->
+            <TabPanel value="relations" :class="dslEdit ? 'tech-dsl-panel' : 'tech-sections'">
 
-          <!-- Spreadsheet par catégorie -->
-          <div v-for="group in categoriesWithComponents" :key="group.category.id" class="section-block">
-            <div class="section-header">
-              <span class="category-title">{{ group.category.name }}</span>
-            </div>
-            <table class="sheet">
-              <thead>
-                <tr>
-                  <th class="col-name">Component</th>
-                  <th class="col-tech">Technology</th>
-                  <th class="col-fw">Framework</th>
-                  <th class="col-constraints">Constraints</th>
-                  <th class="col-zones">Network Zone(s)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="comp in group.components" :key="comp.id">
-                  <td class="col-name cell-name">{{ comp.name }}</td>
-                  <td>
-                    <input class="cell-input" :value="comp.technology ?? ''" placeholder="e.g. Java"
-                      @change="updateComponent(comp.id, { technology: ($event.target as HTMLInputElement).value.trim() || undefined })" />
-                  </td>
-                  <td>
-                    <input class="cell-input" :value="comp.framework ?? ''" placeholder="e.g. Spring Boot"
-                      @change="updateComponent(comp.id, { framework: ($event.target as HTMLInputElement).value.trim() || undefined })" />
-                  </td>
-                  <td>
-                    <input class="cell-input" :value="comp.constraints ?? ''" placeholder="e.g. stateless"
-                      @change="updateComponent(comp.id, { constraints: ($event.target as HTMLInputElement).value.trim() || undefined })" />
-                  </td>
-                  <td class="col-zones">
-                    <div class="zone-checkboxes">
-                      <label v-for="zone in zones" :key="zone.id" class="zone-checkbox-label"
-                        :class="{ active: instancesByComponent.get(comp.id)?.includes(zone.id) }"
-                        :style="zoneCheckboxStyle(zone.name, instancesByComponent.get(comp.id)?.includes(zone.id) ?? false)">
-                        <input type="checkbox" :checked="instancesByComponent.get(comp.id)?.includes(zone.id)" @change="toggleZone(comp.id, zone.id)" />
-                        {{ zone.name }}
-                      </label>
+              <!-- Mode DSL -->
+              <template v-if="dslEdit">
+                <div v-if="!hasMultiInstanceRelations" class="dsl-no-multi-zone">
+                  <i class="pi pi-info-circle" />
+                  No component is deployed in multiple zones. All relations are induced from the application landscape.
+                </div>
+                <template v-else>
+                  <DslEditor
+                    :model-value="localRelationsBody"
+                    :read-only-header="dslReadOnlyHeader"
+                    :completion-names="completionNames"
+                    :validation-status="syntaxError ? 'syntax-error' : semanticErrors.length > 0 ? 'warnings' : isValidating ? 'validating' : 'idle'"
+                    @update:model-value="onRelationsChange"
+                  />
+                  <div v-if="syntaxError" class="dsl-error-bar">
+                    <i class="pi pi-times-circle" /> {{ syntaxError }}
+                  </div>
+                  <div v-if="semanticErrors.length > 0 && !syntaxError" class="dsl-warning-bar">
+                    <div v-for="(err, i) in semanticErrors" :key="i">
+                      <i class="pi pi-exclamation-triangle" /> {{ err }}
                     </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p v-if="categoriesWithComponents.length === 0" class="empty-state">No components yet.</p>
-        </div>
-
-        <!-- ── TAB : Relations ── -->
-        <div v-else-if="activeTab === 'relations'" class="tech-sections">
-          <p v-if="!hasMultiInstanceRelations && logicalRelations.length > 0" class="empty-state no-multi-zone">
-            No component is deployed in multiple zones. All relations are induced from the application landscape.
-          </p>
-          <p v-else-if="logicalRelations.length === 0" class="empty-state">
-            No logical relations yet. Add relations in the Application Landscape<span v-if="!dag.landscape.autoSync"> or enable AutoSync</span>.
-          </p>
-
-          <div v-for="lr in logicalRelations" :key="`${lr.fromComponentId}->${lr.toComponentId}`" class="rel-block">
-            <!-- En-tête : noms logiques + badge + bouton ajout (multi-zone uniquement) -->
-            <div class="rel-header">
-              <span class="rel-comp">{{ compName(lr.fromComponentId) }}</span>
-              <span class="rel-arrow">→</span>
-              <span class="rel-comp">{{ compName(lr.toComponentId) }}</span>
-              <span v-if="instancesFor(lr.fromComponentId).length === 0 || instancesFor(lr.toComponentId).length === 0"
-                class="rel-badge warn" title="One or both components have no zone assigned">⚠ no zone</span>
-              <div class="rel-header-spacer" />
-              <Button v-if="isMultiZone(lr.fromComponentId, lr.toComponentId)" icon="pi pi-plus" size="small" text severity="secondary" title="Add instance pair"
-                @click="startAddRelation(lr.fromComponentId, lr.toComponentId)" />
-            </div>
-
-            <!-- Une ligne par TechnicalRelation existante -->
-            <div v-for="tr in technicalRelationsFor(lr.fromComponentId, lr.toComponentId)" :key="tr.id" class="rel-row">
-              <!-- côté source : pill si 1 seule instance, select si plusieurs -->
-              <template v-if="instancesFor(lr.fromComponentId).length <= 1">
-                <span class="zone-pill">{{ zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? '') }}</span>
+                  </div>
+                </template>
               </template>
+
+              <!-- Mode guidé -->
               <template v-else>
-                <select :value="tr.fromInstanceId" class="zone-select"
-                  @change="store.updateTechnicalRelation(dag!.id, tr.id, { fromInstanceId: ($event.target as HTMLSelectElement).value })">
-                  <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
-                </select>
+                <p v-if="!hasMultiInstanceRelations && logicalRelations.length > 0" class="empty-state no-multi-zone">
+                  No component is deployed in multiple zones. All relations are induced from the application landscape.
+                </p>
+                <p v-else-if="logicalRelations.length === 0" class="empty-state">
+                  No logical relations yet. Add relations in the Application Landscape<span v-if="!dag.landscape.autoSync"> or enable AutoSync</span>.
+                </p>
+
+                <div v-for="lr in logicalRelations" :key="`${lr.fromComponentId}->${lr.toComponentId}`" class="rel-block">
+                  <div class="rel-header">
+                    <span class="rel-comp">{{ compName(lr.fromComponentId) }}</span>
+                    <span class="rel-arrow">→</span>
+                    <span class="rel-comp">{{ compName(lr.toComponentId) }}</span>
+                    <span v-if="instancesFor(lr.fromComponentId).length === 0 || instancesFor(lr.toComponentId).length === 0"
+                      class="rel-badge warn" title="One or both components have no zone assigned">⚠ no zone</span>
+                    <div class="rel-header-spacer" />
+                    <Button v-if="isMultiZone(lr.fromComponentId, lr.toComponentId)" icon="pi pi-plus" size="small" text severity="secondary" title="Add instance pair"
+                      @click="startAddRelation(lr.fromComponentId, lr.toComponentId)" />
+                  </div>
+
+                  <div v-for="tr in technicalRelationsFor(lr.fromComponentId, lr.toComponentId)" :key="tr.id" class="rel-row">
+                    <template v-if="instancesFor(lr.fromComponentId).length <= 1">
+                      <span class="zone-pill">{{ zoneName(instancesFor(lr.fromComponentId).find(i => i.id === tr.fromInstanceId)?.networkZoneId ?? '') }}</span>
+                    </template>
+                    <template v-else>
+                      <select :value="tr.fromInstanceId" class="zone-select"
+                        @change="store.updateTechnicalRelation(dag!.id, tr.id, { fromInstanceId: ($event.target as HTMLSelectElement).value })">
+                        <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
+                      </select>
+                    </template>
+                    <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
+                    <span class="rel-arrow-sm">→</span>
+                    <template v-if="instancesFor(lr.toComponentId).length <= 1">
+                      <span class="zone-pill">{{ zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? '') }}</span>
+                    </template>
+                    <template v-else>
+                      <select :value="tr.toInstanceId" class="zone-select"
+                        @change="store.updateTechnicalRelation(dag!.id, tr.id, { toInstanceId: ($event.target as HTMLSelectElement).value })">
+                        <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
+                      </select>
+                    </template>
+                    <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
+                    <input class="cell-input protocol-input"
+                      :value="tr.protocol ?? ''"
+                      :placeholder="lr.protocol ?? 'Protocol'"
+                      @change="updateProtocol(tr.id, ($event.target as HTMLInputElement).value)" />
+                    <Button icon="pi pi-times" size="small" text severity="danger" @click="deletePhysicalRelation(tr.id)" />
+                  </div>
+
+                  <div v-if="addingRelation?.fromComponentId === lr.fromComponentId && addingRelation?.toComponentId === lr.toComponentId" class="rel-add-form">
+                    <select v-model="addingRelation.fromInstanceId" class="zone-select">
+                      <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
+                    </select>
+                    <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
+                    <span class="rel-arrow-sm">→</span>
+                    <select v-model="addingRelation.toInstanceId" class="zone-select">
+                      <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
+                    </select>
+                    <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
+                    <input v-model="addingRelation.protocol" class="cell-input protocol-input" placeholder="Protocol" @keyup.enter="submitAddRelation" @keyup.escape="cancelAddRelation" />
+                    <span class="rel-actions">
+                      <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
+                      <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
+                    </span>
+                  </div>
+                </div>
               </template>
-              <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-              <span class="rel-arrow-sm">→</span>
-              <!-- côté destination : pill si 1 seule instance, select si plusieurs -->
-              <template v-if="instancesFor(lr.toComponentId).length <= 1">
-                <span class="zone-pill">{{ zoneName(instancesFor(lr.toComponentId).find(i => i.id === tr.toInstanceId)?.networkZoneId ?? '') }}</span>
-              </template>
-              <template v-else>
-                <select :value="tr.toInstanceId" class="zone-select"
-                  @change="store.updateTechnicalRelation(dag!.id, tr.id, { toInstanceId: ($event.target as HTMLSelectElement).value })">
-                  <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">{{ zoneName(inst.networkZoneId) }}</option>
-                </select>
-              </template>
-              <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-              <input class="cell-input protocol-input"
-                :value="tr.protocol ?? ''"
-                :placeholder="lr.protocol ?? 'Protocol'"
-                @change="updateProtocol(tr.id, ($event.target as HTMLInputElement).value)" />
-              <Button icon="pi pi-times" size="small" text severity="danger" @click="deletePhysicalRelation(tr.id)" />
-            </div>
+            </TabPanel>
 
-
-            <!-- Formulaire d'ajout inline (multi-zone) -->
-            <div v-if="addingRelation?.fromComponentId === lr.fromComponentId && addingRelation?.toComponentId === lr.toComponentId" class="rel-add-form">
-              <select v-model="addingRelation.fromInstanceId" class="zone-select">
-                <option v-for="inst in instancesFor(lr.fromComponentId)" :key="inst.id" :value="inst.id">
-                  {{ zoneName(inst.networkZoneId) }}
-                </option>
-              </select>
-              <span class="rel-comp-sm">{{ compName(lr.fromComponentId) }}</span>
-              <span class="rel-arrow-sm">→</span>
-              <select v-model="addingRelation.toInstanceId" class="zone-select">
-                <option v-for="inst in instancesFor(lr.toComponentId)" :key="inst.id" :value="inst.id">
-                  {{ zoneName(inst.networkZoneId) }}
-                </option>
-              </select>
-              <span class="rel-comp-sm">{{ compName(lr.toComponentId) }}</span>
-              <input v-model="addingRelation.protocol" class="cell-input protocol-input" placeholder="Protocol" @keyup.enter="submitAddRelation" @keyup.escape="cancelAddRelation" />
-              <span class="rel-actions">
-                <Button icon="pi pi-check" size="small" @click="submitAddRelation" />
-                <Button icon="pi pi-times" size="small" severity="secondary" @click="cancelAddRelation" />
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- ── TAB : Services ── -->
-        <div v-else-if="activeTab === 'services'" class="tech-sections">
-          <p class="empty-state coming-soon">Technical Services — coming soon.</p>
-        </div>
-
-        </template> <!-- end v-else (guided mode) -->
+          </TabPanels>
+        </Tabs>
       </SplitterPanel>
 
       <!-- Panneau droit : diagramme -->
@@ -629,6 +618,14 @@ async function copyMermaid() {
               {{ group.category.name }}
             </label>
           </div>
+
+    <!-- Toolbar : export -->
+      <div class="toolbar-spacer" />
+      <Button label="Export" icon="pi pi-download" size="small" severity="secondary" @click="exportMenu?.toggle($event)" />
+      <Menu ref="exportMenu" :model="exportMenuItems" popup />
+
+
+
         </div>
         <div class="diagram-wrap">
           <MermaidDiagram v-if="activeDsl" :code="activeDsl" />
@@ -659,37 +656,6 @@ async function copyMermaid() {
   flex-shrink: 0;
 }
 
-.tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-}
-
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0 1.1rem;
-  height: 42px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-family: inherit;
-  color: var(--p-text-muted-color);
-  white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.tab:hover { color: var(--p-text-color); }
-
-.tab.active {
-  color: var(--p-primary-color);
-  border-bottom-color: var(--p-primary-color);
-  font-weight: 600;
-}
-
 .tab-badge {
   display: inline-flex;
   align-items: center;
@@ -702,11 +668,7 @@ async function copyMermaid() {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--p-text-muted-color);
-}
-
-.tab.active .tab-badge {
-  background: var(--p-primary-100, #dbeafe);
-  color: var(--p-primary-700, #1d4ed8);
+  margin-left: 0.3rem;
 }
 
 .toolbar-spacer { flex: 1; }
@@ -714,8 +676,14 @@ async function copyMermaid() {
 /* ── Splitter ── */
 .tech-splitter { flex: 1; min-height: 0; border: none !important; }
 
-.tech-left-panel { overflow-y: auto; padding: 0 !important; border-right: 1px solid var(--p-content-border-color); }
-.tech-dsl-panel  { overflow: hidden; padding: 0 !important; display: flex; flex-direction: column; border-right: 1px solid var(--p-content-border-color); }
+.tech-left-panel { overflow: hidden; padding: 0 !important; border-right: 1px solid var(--p-content-border-color); display: flex; flex-direction: column; }
+
+.tech-tabs { display: flex; flex-direction: column; height: 100%; }
+.tech-tabs :deep(.p-tabpanels) { flex: 1; min-height: 0; }
+.tech-tab-panels { flex: 1; min-height: 0; overflow: hidden; }
+.tech-tab-panels :deep(.p-tabpanel) { height: 100%; }
+
+.tech-dsl-panel { overflow: hidden; height: 100%; display: flex; flex-direction: column; }
 .tech-right-panel { overflow: auto; padding: 0 !important; display: flex; flex-direction: column; }
 
 .dsl-error-bar {
