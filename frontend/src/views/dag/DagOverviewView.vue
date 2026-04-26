@@ -15,6 +15,10 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 
+const props = withDefaults(defineProps<{
+  listKey?: 'components' | 'technicalComponents'
+}>(), { listKey: 'components' })
+
 const route = useRoute()
 const store = useDagStore()
 
@@ -24,10 +28,13 @@ const categories = computed(() => dag.value ? allCategories(dag.value).sort((a, 
 
 const componentsByCategory = computed(() => {
   if (!dag.value) return {}
+  const list = props.listKey === 'technicalComponents'
+    ? dag.value.technicalComponents
+    : dag.value.components
   return Object.fromEntries(
     categories.value.map((cat) => [
       cat.id,
-      dag.value!.components.filter((c) => c.categoryId === cat.id),
+      list.filter((c) => c.categoryId === cat.id),
     ]),
   )
 })
@@ -95,7 +102,8 @@ async function runValidation(code: string) {
 
 watch(dslEdit, (isManual) => {
   if (isManual && dag.value) {
-    dslBody.value = generateComponentsBody(dag.value, false, true)
+    const list = props.listKey === 'technicalComponents' ? dag.value.technicalComponents : undefined
+    dslBody.value = generateComponentsBody(dag.value, false, true, list)
     syntaxError.value = null
     functionalResult.value = null
     runValidation(dslHeader + '\n' + dslBody.value)
@@ -110,7 +118,7 @@ function onDslChange(value: string) {
 
 function syncModel() {
   if (!dag.value || !functionalResult.value) return
-  store.syncFromDsl(dag.value.id, functionalResult.value.parsed)
+  store.syncFromDsl(dag.value.id, functionalResult.value.parsed, props.listKey)
   runValidation(dslHeader + '\n' + dslBody.value)
 }
 
@@ -128,7 +136,8 @@ const validationStatus = computed(() => {
 const componentsDsl = computed(() => {
   if (!dag.value) return ''
   const header = ['---', 'config:', '    theme: neutral', '---', '', 'flowchart TB'].join('\n')
-  const body = generateComponentsBody(dag.value, true, true)
+  const list = props.listKey === 'technicalComponents' ? dag.value.technicalComponents : undefined
+  const body = generateComponentsBody(dag.value, true, true, list)
   return body ? header + '\n' + body : ''
 })
 </script>
@@ -169,6 +178,7 @@ const componentsDsl = computed(() => {
             :dag-id="dag.id"
             :category="category"
             :components="componentsByCategory[category.id] ?? []"
+            :list-key="listKey"
           />
 
           <p v-if="categories.length === 0" class="empty">No categories yet.</p>

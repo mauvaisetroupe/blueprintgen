@@ -484,9 +484,11 @@ export const useDagStore = defineStore(
     }
 
     // --- Sync model from parsed DSL ---
-    function syncFromDsl(dagId: string, parsed: ParsedDsl) {
+    function syncFromDsl(dagId: string, parsed: ParsedDsl, listKey: 'components' | 'technicalComponents' = 'components') {
       const dag = getDag(dagId)
       if (!dag) return
+
+      const list = dag[listKey]
 
       for (const node of parsed.nodes) {
         const currentCategories = allCategories(dag)
@@ -501,58 +503,50 @@ export const useDagStore = defineStore(
           dag.customCategories.push(category)
         }
 
-        // Match by label first; fallback to node ID (handles renames in the DSL)
         const component =
-          dag.components.find((c) => c.name === node.label)
-          ?? dag.components.find((c) => toNodeId(c.name) === node.id)
+          list.find((c) => c.name === node.label)
+          ?? list.find((c) => toNodeId(c.name) === node.id)
 
         if (!component) {
-          dag.components.push({
+          list.push({
             id: generateId(),
             name: node.label,
             description: '',
             categoryId: category?.id ?? '',
           })
         } else {
-          // Update name if it changed (rename case)
           if (component.name !== node.label) component.name = node.label
           if (category && component.categoryId !== category.id) component.categoryId = category.id
         }
       }
 
-      // Sync relations from parsed arrows
-      console.log('[syncFromDsl] parsed.relations:', parsed.relations)
-      console.log('[syncFromDsl] parsed.nodes:', parsed.nodes.map(n => `${n.id}="${n.label}"`))
-      for (const parsedRel of parsed.relations) {
-        const fromNode = parsed.nodes.find((n) => n.id === parsedRel.fromId)
-        const toNode   = parsed.nodes.find((n) => n.id === parsedRel.toId)
-        console.log(`[syncFromDsl] rel ${parsedRel.fromId}->${parsedRel.toId}: fromNode=${fromNode?.label}, toNode=${toNode?.label}`)
+      // Relations seulement pour la liste business (pas de relations pour les composants techniques)
+      if (listKey === 'components') {
+        for (const parsedRel of parsed.relations) {
+          const fromNode = parsed.nodes.find((n) => n.id === parsedRel.fromId)
+          const toNode   = parsed.nodes.find((n) => n.id === parsedRel.toId)
 
-        // Primary: resolve via node declaration label; fallback: match by derived node ID
-        const fromComp =
-          (fromNode ? dag.components.find((c) => c.name === fromNode.label) : undefined)
-          ?? dag.components.find((c) => toNodeId(c.name) === parsedRel.fromId)
-        const toComp =
-          (toNode ? dag.components.find((c) => c.name === toNode.label) : undefined)
-          ?? dag.components.find((c) => toNodeId(c.name) === parsedRel.toId)
+          const fromComp =
+            (fromNode ? list.find((c) => c.name === fromNode.label) : undefined)
+            ?? list.find((c) => toNodeId(c.name) === parsedRel.fromId)
+          const toComp =
+            (toNode ? list.find((c) => c.name === toNode.label) : undefined)
+            ?? list.find((c) => toNodeId(c.name) === parsedRel.toId)
 
-        console.log(`[syncFromDsl] fromComp=${fromComp?.name}, toComp=${toComp?.name}`)
-        if (!fromComp || !toComp) { console.log('[syncFromDsl] SKIP: component not found'); continue }
+          if (!fromComp || !toComp) continue
 
-        // Add only if relation doesn't already exist
-        const exists = dag.relations.some(
-          (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
-        )
-        console.log(`[syncFromDsl] exists=${exists}`)
-        if (!exists) {
-          dag.relations.push({
-            id: generateId(),
-            fromComponentId: fromComp.id,
-            toComponentId: toComp.id,
-            label: parsedRel.label,
-            source: 'manual',
-          })
-          console.log('[syncFromDsl] PUSHED relation', fromComp.name, '->', toComp.name)
+          const exists = dag.relations.some(
+            (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
+          )
+          if (!exists) {
+            dag.relations.push({
+              id: generateId(),
+              fromComponentId: fromComp.id,
+              toComponentId: toComp.id,
+              label: parsedRel.label,
+              source: 'manual',
+            })
+          }
         }
       }
 

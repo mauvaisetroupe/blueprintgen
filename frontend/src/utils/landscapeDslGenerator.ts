@@ -71,12 +71,13 @@ export function generateLandscapeHeader(dag: Dag): string {
 }
 
 /** Subgraphs + nodes uniquement — sans header ni flèches (zone read-only de l'éditeur DSL) */
-export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName: boolean): string {
+export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName: boolean, componentList?: Component[]): string {
   const lines: string[] = []
   const sortedCategories = allCategories(dag).sort((a, b) => a.order - b.order)
+  const list = componentList ?? dag.components
 
   for (const category of sortedCategories) {
-    const components = dag.components.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
+    const components = list.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
     if (components.length === 0) continue
 
     const shape = DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase())

@@ -31,6 +31,13 @@ const router = createRouter({
           path: 'components',
           name: 'dag-overview',
           component: () => import('@/views/dag/DagOverviewView.vue'),
+          props: { listKey: 'components' },
+        },
+        {
+          path: 'technical-components',
+          name: 'dag-technical-components',
+          component: () => import('@/views/dag/DagOverviewView.vue'),
+          props: { listKey: 'technicalComponents' },
         },
         {
           path: 'landscape',
