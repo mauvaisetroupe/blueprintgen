@@ -174,14 +174,38 @@ localStorage.setItem('blueprintgen:import', JSON.stringify({
   id: 'a1b2c3d4-0000-0000-0000-000000000001', // stable ID managed by the calling app
   name: 'E-Commerce Platform',
   description: 'Online store with payment and order management',
-  categories: ['Frontends', 'Backends', 'External Systems', 'Data Storage'],
+  categories: ['Users', 'Frontends', 'Backends', 'Data Storage', 'External Systems',
+               'Auth Gateway', 'IAM', 'Permission Manager'],
   components: [
-    { name: 'Payment Gateway', description: 'Stripe payment system', category: 'External Systems' },
-    { name: 'Shipping API',    description: 'Carrier external API',  category: 'External Systems' },
+    { name: 'End User',          description: 'Browser / mobile client',        category: 'Users',            networkZone: 'internet'  },
+    { name: 'Web App',           description: 'React SPA',                       category: 'Frontends',        networkZone: 'dmz'       },
+    { name: 'Order API',         description: 'Order management service',        category: 'Backends',         networkZone: 'internal'  },
+    { name: 'Catalog API',       description: 'Product catalog service',         category: 'Backends',         networkZone: 'internal'  },
+    { name: 'Orders DB',         description: 'PostgreSQL — orders',             category: 'Data Storage',     networkZone: 'internal'  },
+    { name: 'Payment Gateway',   description: 'Stripe payment system',           category: 'External Systems'                           },
+    { name: 'Shipping API',      description: 'Carrier external API',            category: 'External Systems'                           },
+  ],
+  technicalComponents: [
+    { name: 'API Gateway',       description: 'Kong — rate limiting & routing',  category: 'Auth Gateway',     networkZone: 'dmz'       },
+    { name: 'Keycloak',          description: 'OpenID Connect / OAuth2 server',  category: 'IAM',              networkZone: 'internal'  },
+    { name: 'OPA',               description: 'Open Policy Agent',               category: 'Permission Manager', networkZone: 'internal' },
   ],
 }))
 window.location.href = '/blueprintgen/import'
 ```
+
+This import will automatically:
+- Create zone assignments in the Technical Landscape for every component with a `networkZone`
+- Generate the following security relations (if both endpoints exist):
+
+| From | To | Trigger |
+|---|---|---|
+| Users | Auth Gateway | security pattern |
+| Auth Gateway | Frontends | security pattern |
+| Auth Gateway | IAM | JWT validation |
+| Frontends | Backends | security pattern |
+| Backends | IAM | token introspection |
+| Backends | Permission Manager | permission check |
 
 **`DagImportDraft` format:**
 
@@ -191,10 +215,18 @@ window.location.href = '/blueprintgen/import'
 | `name` | `string` | yes | DAG name |
 | `description` | `string` | yes | DAG description |
 | `categories` | `string[]` | yes | Category names (matched against defaults if possible) |
-| `components` | `array` | no | Components to pre-populate |
+| `components` | `array` | no | Business components (shown in Application Landscape) |
 | `components[].name` | `string` | yes | Component name |
 | `components[].description` | `string` | yes | Component description |
 | `components[].category` | `string` | yes | Category name (must match one of `categories`) |
+| `components[].networkZone` | `string` | no | Network zone for Technical Landscape (`internet`, `dmz`, `internal`, or custom) |
+| `technicalComponents` | `array` | no | Technical-only components (Auth Gateway, IAM, monitoring…) |
+| `technicalComponents[].name` | `string` | yes | Component name |
+| `technicalComponents[].description` | `string` | yes | Component description |
+| `technicalComponents[].category` | `string` | yes | Category name — typically `Auth Gateway`, `IAM`, `Permission Manager`, `Technical Services` |
+| `technicalComponents[].networkZone` | `string` | no | Network zone for Technical Landscape |
+
+> **Built-in security categories:** `Auth Gateway`, `IAM`, `Permission Manager`, `Technical Services` are available by default — no need to create them as custom categories.
 
 > **Note on updates:** merging is additive only. A renamed component will appear as a new entry alongside the old one — the calling app should manage component identity via stable IDs if precise updates are needed.
 

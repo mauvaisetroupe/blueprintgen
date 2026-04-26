@@ -197,7 +197,8 @@ export interface Dag {
 export interface DagImportDraftComponent {
   name: string
   description: string
-  category: string  // category name
+  category: string       // category name
+  networkZone?: string   // optional: zone réseau pour le technical landscape
 }
 
 export interface DagImportDraft {
@@ -206,6 +207,7 @@ export interface DagImportDraft {
   description: string
   categories: string[]
   components?: DagImportDraftComponent[]
+  technicalComponents?: DagImportDraftComponent[]
 }
 
 // Default categories based on the reference Mermaid example
@@ -218,9 +220,10 @@ export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
   { name: 'Data Storage',       order: 6,  showSubgraph: true,  nodeShape: 'cylinder' },
   { name: 'Analytics',          order: 7,  showSubgraph: true  },
   { name: 'External Systems',   order: 8,  showSubgraph: true,  nodeShape: 'rounded'  },
-  { name: 'Auth Gateway',       order: 9,  showSubgraph: true  },
-  { name: 'IAM',                order: 10, showSubgraph: true  },
-  { name: 'Technical Services', order: 11, showSubgraph: true  },
+  { name: 'Auth Gateway',        order: 9,  showSubgraph: true  },
+  { name: 'IAM',                 order: 10, showSubgraph: true  },
+  { name: 'Permission Manager',  order: 11, showSubgraph: true  },
+  { name: 'Technical Services',  order: 12, showSubgraph: true  },
 ]
 
 // Noms des catégories par défaut (case-insensitive) — pour dériver isDefault à la volée

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, allNetworkZones } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -176,6 +176,85 @@ export const useDagStore = defineStore(
      *   merges categories and components additively (existing data is preserved).
      * - If not: creates a new DAG from the draft.
      */
+    // ── Helpers pour importDag ────────────────────────────────────────────────
+
+    function applyZoneAssignments(dag: Dag, draftComps: Array<{ name: string; networkZone?: string }>) {
+      for (const dc of draftComps) {
+        if (!dc.networkZone) continue
+        const zoneName = dc.networkZone.trim()
+        if (!zoneName) continue
+
+        // Trouver le composant correspondant (business ou technique)
+        const comp = [...dag.components, ...dag.technicalComponents].find(
+          (c) => c.name.toLowerCase() === dc.name.toLowerCase(),
+        )
+        if (!comp) continue
+
+        // Trouver ou créer la zone réseau
+        const allZones = allNetworkZones(dag.technicalLandscape)
+        let zone = allZones.find((z) => z.name.toLowerCase() === zoneName.toLowerCase())
+        if (!zone) {
+          const newZone: NetworkZone = {
+            id:    generateId(),
+            name:  zoneName,
+            order: allZones.length + 1,
+          }
+          dag.technicalLandscape.customNetworkZones.push(newZone)
+          zone = newZone
+        }
+
+        // Créer l'instance si elle n'existe pas
+        const alreadyAssigned = dag.technicalLandscape.instances.some(
+          (i) => i.componentId === comp.id && i.networkZoneId === zone!.id,
+        )
+        if (!alreadyAssigned) {
+          dag.technicalLandscape.instances.push({
+            id:            generateId(),
+            componentId:   comp.id,
+            networkZoneId: zone.id,
+          })
+        }
+      }
+    }
+
+    // Patterns de relations sécurité auto-générées à l'import
+    const SECURITY_PATTERNS: Array<{ from: string; to: string }> = [
+      { from: 'users',              to: 'auth gateway'       },
+      { from: 'auth gateway',       to: 'frontends'          },
+      { from: 'auth gateway',       to: 'iam'                },
+      { from: 'frontends',          to: 'backends'           },
+      { from: 'backends',           to: 'iam'                },
+      { from: 'backends',           to: 'permission manager' },
+    ]
+
+    function applySecurityRelations(dag: Dag) {
+      const cats = allCategories(dag)
+      const allComps = [...dag.components, ...dag.technicalComponents]
+
+      function firstInCategory(categoryName: string): Component | undefined {
+        const cat = cats.find((c) => c.name.toLowerCase() === categoryName.toLowerCase())
+        if (!cat) return undefined
+        return allComps.find((c) => c.categoryId === cat.id && c.name.trim() !== '')
+      }
+
+      for (const pattern of SECURITY_PATTERNS) {
+        const fromComp = firstInCategory(pattern.from)
+        const toComp   = firstInCategory(pattern.to)
+        if (!fromComp || !toComp) continue
+        const alreadyExists = dag.relations.some(
+          (r) => r.fromComponentId === fromComp.id && r.toComponentId === toComp.id,
+        )
+        if (!alreadyExists) {
+          dag.relations.push({
+            id:              generateId(),
+            fromComponentId: fromComp.id,
+            toComponentId:   toComp.id,
+            source:          'manual',
+          })
+        }
+      }
+    }
+
     function importDag(draft: DagImportDraft): Dag {
       const defaultByName = new Map(DEFAULT_CATEGORIES.map((c) => [c.name.toLowerCase(), c]))
       const existing = dags.value.find((d) => d.id === draft.id)
@@ -228,6 +307,30 @@ export const useDagStore = defineStore(
           }
         }
 
+        // Merge technicalComponents — add missing ones
+        for (const comp of draft.technicalComponents ?? []) {
+          const alreadyExists = existing.technicalComponents.some(
+            (c) => c.name.toLowerCase() === comp.name.toLowerCase(),
+          )
+          if (!alreadyExists) {
+            const category = allCategories(existing).find(
+              (c) => c.name.toLowerCase() === comp.category.toLowerCase(),
+            )
+            existing.technicalComponents.push({
+              id:          generateId(),
+              name:        comp.name,
+              description: comp.description,
+              categoryId:  category?.id ?? '',
+            })
+          }
+        }
+
+        // Zone assignments from networkZone fields
+        applyZoneAssignments(existing, [...(draft.components ?? []), ...(draft.technicalComponents ?? [])])
+
+        // Auto-generate security relations
+        applySecurityRelations(existing)
+
         existing.updatedAt = now()
         return existing
       }
@@ -271,6 +374,13 @@ export const useDagStore = defineStore(
         categoryId:  categoryIdByName.get(c.category.toLowerCase()) ?? '',
       }))
 
+      const technicalComponents = (draft.technicalComponents ?? []).map((c) => ({
+        id:          generateId(),
+        name:        c.name,
+        description: c.description,
+        categoryId:  categoryIdByName.get(c.category.toLowerCase()) ?? '',
+      }))
+
       const dag: Dag = {
         id:          draft.id,
         name:        draft.name,
@@ -280,7 +390,7 @@ export const useDagStore = defineStore(
         customCategories,
         disabledCategoryIds: disabledCategoryIds.length > 0 ? disabledCategoryIds : undefined,
         components,
-        technicalComponents: [],
+        technicalComponents,
         relations:   [],
         landscape:   {},
         technicalLandscape: {
@@ -291,6 +401,13 @@ export const useDagStore = defineStore(
         },
         applicationFlows: [],
       }
+
+      // Zone assignments from networkZone fields
+      applyZoneAssignments(dag, [...(draft.components ?? []), ...(draft.technicalComponents ?? [])])
+
+      // Auto-generate security relations
+      applySecurityRelations(dag)
+
       dags.value.push(dag)
       return dag
     }
