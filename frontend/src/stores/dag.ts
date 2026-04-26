@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, type AuthnConfig, type AuthGatewayInstance, type IamInstance, type SecurityRelation, type SecurityConfig, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, defaultSecurityConfig, defaultAuthnConfig, type IamRole } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -45,111 +45,6 @@ function migrateTechnicalLandscape(tl: any) {
     useElk:             tl?.useElk,
     categorySubgraphs:  tl?.categorySubgraphs,
   }
-}
-
-// Migration défensive : convertit l'ancien format SecurityConfig (authGateway singular) vers le nouveau (authGateways[])
-function migrateSecurityConfig(raw: any): SecurityConfig {
-  if (!raw) return defaultSecurityConfig()
-  const authn = raw.authn
-  if (!authn) return defaultSecurityConfig()
-
-  function rel(fromId: string, toId: string, label?: string): SecurityRelation {
-    return { id: generateId(), fromId, toId, label }
-  }
-
-  // Format actuel : securityRelations[] déjà présent
-  if (Array.isArray(authn.securityRelations)) {
-    return {
-      authn: {
-        authGateways:      authn.authGateways      ?? [],
-        iamInstances:      authn.iamInstances       ?? [],
-        securityRelations: authn.securityRelations,
-      },
-    }
-  }
-
-  // Format intermédiaire : iamInstances[] + champs sur les gateways + iamLinks
-  if (Array.isArray(authn.iamInstances)) {
-    const securityRelations: SecurityRelation[] = []
-    for (const gw of (authn.authGateways ?? []) as any[]) {
-      for (const uid of (gw.userComponentIds ?? []))      securityRelations.push(rel(uid, gw.id))
-      for (const iid of (gw.iamInstanceIds ?? []))        securityRelations.push(rel(gw.id, iid))
-      for (const pid of (gw.protectedComponentIds ?? [])) securityRelations.push(rel(gw.id, pid))
-    }
-    for (const l of (authn.iamLinks ?? []) as any[]) securityRelations.push(rel(l.fromId, l.toId))
-    const authGateways: AuthGatewayInstance[] = (authn.authGateways ?? []).map((gw: any) => ({
-      id: gw.id, product: gw.product,
-    }))
-    return { authn: { authGateways, iamInstances: authn.iamInstances, securityRelations } }
-  }
-
-  // Format avec authGateways[] et listes IAM séparées
-  if (Array.isArray(authn.authGateways)) {
-    const iamInstances: IamInstance[] = []
-    const idMap = new Map<string, string>()
-
-    function mergeOrCreate(oldId: string, product: string | undefined, role: IamRole): string {
-      if (product) {
-        const existing = iamInstances.find((i) => i.product === product)
-        if (existing) {
-          if (!existing.roles.includes(role)) existing.roles.push(role)
-          idMap.set(oldId, existing.id)
-          return existing.id
-        }
-      }
-      const inst: IamInstance = { id: oldId, product, roles: [role] }
-      iamInstances.push(inst)
-      return oldId
-    }
-    for (const s of (authn.identityStores ?? []))        mergeOrCreate(s.id, s.product, 'identityStore')
-    for (const r of (authn.roleManagements ?? []))       mergeOrCreate(r.id, r.product, 'roleManagement')
-    for (const p of (authn.permissionManagements ?? [])) mergeOrCreate(p.id, p.product, 'permissionManagement')
-
-    const resolve = (id: string) => idMap.get(id) ?? id
-    const securityRelations: SecurityRelation[] = []
-    for (const gw of (authn.authGateways ?? []) as any[]) {
-      for (const uid of (gw.userComponentIds ?? []))      securityRelations.push(rel(uid, gw.id))
-      for (const sid of (gw.identityStoreIds ?? []))      securityRelations.push(rel(gw.id, resolve(sid)))
-      for (const rid of (gw.roleManagementIds ?? []))     securityRelations.push(rel(gw.id, resolve(rid)))
-      for (const pid of (gw.protectedComponentIds ?? [])) securityRelations.push(rel(gw.id, pid))
-    }
-    for (const l of (authn.roleToPermLinks ?? []) as any[])
-      securityRelations.push(rel(resolve(l.fromRoleId), resolve(l.toPermId)))
-
-    const authGateways: AuthGatewayInstance[] = (authn.authGateways ?? []).map((gw: any) => ({
-      id: gw.id, product: gw.product,
-    }))
-    return { authn: { authGateways, iamInstances, securityRelations } }
-  }
-
-  // Très ancien format : authGateway (singulier) avec flag enabled
-  const config = defaultSecurityConfig()
-  let gwId: string | null = null
-
-  if (authn.authGateway?.enabled) {
-    gwId = generateId()
-    config.authn.authGateways = [{ id: gwId, product: authn.authGateway.product }]
-  }
-
-  const securityRelations: SecurityRelation[] = []
-  const addIam = (enabled: boolean, product: string | undefined, role: IamRole): IamInstance | null => {
-    if (!enabled) return null
-    const inst: IamInstance = { id: generateId(), product, roles: [role] }
-    config.authn.iamInstances.push(inst)
-    if (gwId && role !== 'permissionManagement') securityRelations.push(rel(gwId, inst.id))
-    return inst
-  }
-  if (gwId) {
-    for (const uid of (authn.userComponentIds ?? []))      securityRelations.push(rel(uid, gwId))
-    for (const pid of (authn.protectedComponentIds ?? [])) securityRelations.push(rel(gwId, pid))
-  }
-  const roleMgmt = addIam(authn.roleManagement?.enabled, authn.roleManagement?.product, 'roleManagement')
-  const permMgmt = addIam(authn.permissionManagement?.enabled, authn.permissionManagement?.product, 'permissionManagement')
-  addIam(authn.identityStore?.enabled, authn.identityStore?.product, 'identityStore')
-  if (roleMgmt && permMgmt) securityRelations.push(rel(roleMgmt.id, permMgmt.id))
-  config.authn.securityRelations = securityRelations
-
-  return config
 }
 
 // Migration défensive : convertit l'ancien format dag.categories vers customCategories + disabledCategoryIds
@@ -225,7 +120,6 @@ export const useDagStore = defineStore(
           technicalServices:  [],
         },
         applicationFlows: [],
-        securityConfig: defaultSecurityConfig(),
       }
       dags.value.push(dag)
       return dag
@@ -269,7 +163,6 @@ export const useDagStore = defineStore(
         disabledCategoryIds: catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
         components:         catMigration.components,
         technicalLandscape: migrateTechnicalLandscape(data.technicalLandscape),
-        securityConfig: migrateSecurityConfig((data as any).securityConfig),
       }
       dags.value.push(dag)
       return dag
@@ -394,7 +287,6 @@ export const useDagStore = defineStore(
           technicalServices:  [],
         },
         applicationFlows: [],
-        securityConfig: defaultSecurityConfig(),
       }
       dags.value.push(dag)
       return dag
@@ -415,9 +307,6 @@ export const useDagStore = defineStore(
         if (disabledCategoryIds.length > 0) dag.disabledCategoryIds = disabledCategoryIds
         dag.components = components
         delete rawDag.categories
-      }
-      if (!dag.securityConfig || !Array.isArray((dag.securityConfig.authn as any)?.authGateways)) {
-        dag.securityConfig = migrateSecurityConfig(dag.securityConfig as any)
       }
       return dag
     }
@@ -833,12 +722,6 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
-    function updateAuthnConfig(dagId: string, config: AuthnConfig) {
-      const dag = getDag(dagId)
-      if (!dag) return
-      dag.securityConfig.authn = config
-      dag.updatedAt = now()
-    }
 
     /** Remplace toutes les relations manuelles du landscape par celles parsées depuis l'éditeur DSL. */
     function replaceManualRelations(
@@ -897,7 +780,6 @@ export const useDagStore = defineStore(
       deleteTechnicalService,
       setTechnicalLandscapeUseElk,
       setTechnicalCategorySubgraph,
-      updateAuthnConfig,
     }
   },
   {

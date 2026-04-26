@@ -170,55 +170,6 @@ export interface FlowsViewOptions {
   subgraphCategoryIds?: string[]   // undefined = toutes les catégories activées
 }
 
-// --- Security config ---
-
-export type IamRole = 'identityStore' | 'roleManagement' | 'permissionManagement'
-
-// Un composant IAM peut jouer plusieurs rôles (ex : Keycloak = Identity Store + Role Management)
-export interface IamInstance {
-  id: string
-  product?: string
-  roles: IamRole[]
-}
-
-// Instance d'un Auth Gateway — existence seulement, les relations sont dans securityRelations
-export interface AuthGatewayInstance {
-  id: string
-  product?: string
-}
-
-// Relation entre deux nœuds du schéma de sécurité.
-// fromId / toId peuvent être : gateway id, IAM id, component id, ou ComponentInstance id
-export interface SecurityRelation {
-  id: string
-  fromId: string
-  toId: string
-  label?: string
-}
-
-export interface AuthnConfig {
-  authGateways: AuthGatewayInstance[]
-  iamInstances: IamInstance[]
-  securityRelations: SecurityRelation[]  // source de vérité unique pour toutes les flèches
-}
-
-export interface SecurityConfig {
-  authn: AuthnConfig
-  // apiGateway, waf, fileTransfer — à venir
-}
-
-export function defaultAuthnConfig(): AuthnConfig {
-  return {
-    authGateways: [],
-    iamInstances: [],
-    securityRelations: [],
-  }
-}
-
-export function defaultSecurityConfig(): SecurityConfig {
-  return { authn: defaultAuthnConfig() }
-}
-
 // --- DAG root ---
 
 export interface Dag {
@@ -238,7 +189,6 @@ export interface Dag {
   landscape: Landscape
   technicalLandscape: TechnicalLandscape
   applicationFlows: ApplicationFlow[]
-  securityConfig: SecurityConfig
 }
 
 // --- Generic import format (used by external apps to pre-populate a DAG) ---
