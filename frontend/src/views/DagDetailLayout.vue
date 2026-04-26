@@ -50,10 +50,10 @@ provide('dslEdit', dslEdit)
 
 const tabs = [
   { label: 'Components',            route: 'components',           value: '0' },
-  { label: 'Landscape',             route: 'landscape',            value: '1' },
-  { label: 'Application Flows',     route: 'flows',                value: '2' },
-  { label: 'Technical Landscape',   route: 'technical',            value: '3' },
   { label: 'Technical Components',  route: 'technical-components', value: '5' },
+  { label: 'Application Flows',     route: 'flows',                value: '2' },
+  { label: 'Landscape',             route: 'landscape',            value: '1' },
+  { label: 'Technical Landscape',   route: 'technical',            value: '3' },
   { label: 'Security',              route: 'security',             value: '4' },
 ]
 

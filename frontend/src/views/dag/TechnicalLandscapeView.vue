@@ -421,7 +421,7 @@ async function copyMermaid() {
       <SplitterPanel :size="55" :min-size="30" class="tech-left-panel">
         <Tabs v-model:value="activeTab" class="tech-tabs">
           <TabList>
-            <Tab value="components">Components</Tab>
+            <Tab value="components">Network zones</Tab>
             <Tab value="relations">
               Relations
               <span v-if="logicalRelations.length" class="tab-badge">{{ logicalRelations.length }}</span>
