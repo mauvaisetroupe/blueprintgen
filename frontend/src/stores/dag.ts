@@ -111,6 +111,7 @@ export const useDagStore = defineStore(
         updatedAt: now(),
         customCategories: [],   // toutes les catégories par défaut sont actives (aucune désactivée)
         components: [],
+        technicalComponents: [],
         relations: [],
         landscape: {},
         technicalLandscape: {
@@ -157,12 +158,13 @@ export const useDagStore = defineStore(
           categorySubgraphs: data.landscape?.categorySubgraphs,
         },
         // Champs ajoutés dans les versions récentes — migration défensive
-        relations:          data.relations        ?? [],
-        applicationFlows:   data.applicationFlows ?? [],
-        customCategories:   catMigration.customCategories,
-        disabledCategoryIds: catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
-        components:         catMigration.components,
-        technicalLandscape: migrateTechnicalLandscape(data.technicalLandscape),
+        relations:            data.relations           ?? [],
+        applicationFlows:     data.applicationFlows    ?? [],
+        customCategories:     catMigration.customCategories,
+        disabledCategoryIds:  catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
+        components:           catMigration.components,
+        technicalComponents:  data.technicalComponents ?? [],
+        technicalLandscape:   migrateTechnicalLandscape(data.technicalLandscape),
       }
       dags.value.push(dag)
       return dag
@@ -278,6 +280,7 @@ export const useDagStore = defineStore(
         customCategories,
         disabledCategoryIds: disabledCategoryIds.length > 0 ? disabledCategoryIds : undefined,
         components,
+        technicalComponents: [],
         relations:   [],
         landscape:   {},
         technicalLandscape: {
@@ -297,6 +300,7 @@ export const useDagStore = defineStore(
       if (!dag) return undefined
       // Migrations défensives pour les DAGs créés avant les nouveaux champs
       if (!dag.relations) dag.relations = []
+      if (!dag.technicalComponents) dag.technicalComponents = []
       if (!dag.technicalLandscape?.customNetworkZones) {
         dag.technicalLandscape = migrateTechnicalLandscape(dag.technicalLandscape)
       }
@@ -409,6 +413,33 @@ export const useDagStore = defineStore(
       dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter(
         (tr) => tr.fromComponentId !== componentId && tr.toComponentId !== componentId,
       )
+      dag.updatedAt = now()
+    }
+
+    // --- Technical Components ---
+
+    function addTechnicalComponent(dagId: string, name: string, description: string, categoryId: string): Component {
+      const dag = getDag(dagId)
+      if (!dag) throw new Error(`DAG ${dagId} not found`)
+      const component: Component = { id: generateId(), name, description, categoryId }
+      dag.technicalComponents.push(component)
+      dag.updatedAt = now()
+      return component
+    }
+
+    function updateTechnicalComponent(dagId: string, componentId: string, patch: Partial<Omit<Component, 'id'>>) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      const component = dag.technicalComponents.find((c) => c.id === componentId)
+      if (!component) return
+      Object.assign(component, patch)
+      dag.updatedAt = now()
+    }
+
+    function deleteTechnicalComponent(dagId: string, componentId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalComponents = dag.technicalComponents.filter((c) => c.id !== componentId)
       dag.updatedAt = now()
     }
 
@@ -754,6 +785,9 @@ export const useDagStore = defineStore(
       addComponent,
       updateComponent,
       deleteComponent,
+      addTechnicalComponent,
+      updateTechnicalComponent,
+      deleteTechnicalComponent,
       addRelation,
       updateRelation,
       deleteRelation,

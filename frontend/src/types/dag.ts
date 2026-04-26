@@ -182,7 +182,8 @@ export interface Dag {
   // Shared pool — referenced by all sections
   customCategories: Category[]       // catégories ajoutées par l'architecte ; les défauts sont dérivés à la volée
   disabledCategoryIds?: string[]     // IDs stables des catégories par défaut désactivées pour ce DAG
-  components: Component[]
+  components: Component[]            // composants applicatifs (affichés dans le landscape)
+  technicalComponents: Component[]   // composants techniques (Auth Gateway, IAM, Technical Services…)
   relations: Relation[]
 
   // Sections
@@ -209,14 +210,17 @@ export interface DagImportDraft {
 
 // Default categories based on the reference Mermaid example
 export const DEFAULT_CATEGORIES: DefaultCategoryDef[] = [
-  { name: 'Users',            order: 1, showSubgraph: true,  nodeShape: 'rounded'  },
-  { name: 'Frontends',        order: 2, showSubgraph: true  },
-  { name: 'Backends',         order: 3, showSubgraph: true  },
-  { name: 'Brokers',          order: 4, showSubgraph: true  },
-  { name: 'Batchs',           order: 5, showSubgraph: true  },
-  { name: 'Data Storage',     order: 6, showSubgraph: true,  nodeShape: 'cylinder' },
-  { name: 'Analytics',        order: 7, showSubgraph: true  },
-  { name: 'External Systems', order: 8, showSubgraph: true,  nodeShape: 'rounded'  },
+  { name: 'Users',              order: 1,  showSubgraph: true,  nodeShape: 'rounded'  },
+  { name: 'Frontends',          order: 2,  showSubgraph: true  },
+  { name: 'Backends',           order: 3,  showSubgraph: true  },
+  { name: 'Brokers',            order: 4,  showSubgraph: true  },
+  { name: 'Batchs',             order: 5,  showSubgraph: true  },
+  { name: 'Data Storage',       order: 6,  showSubgraph: true,  nodeShape: 'cylinder' },
+  { name: 'Analytics',          order: 7,  showSubgraph: true  },
+  { name: 'External Systems',   order: 8,  showSubgraph: true,  nodeShape: 'rounded'  },
+  { name: 'Auth Gateway',       order: 9,  showSubgraph: true  },
+  { name: 'IAM',                order: 10, showSubgraph: true  },
+  { name: 'Technical Services', order: 11, showSubgraph: true  },
 ]
 
 // Noms des catégories par défaut (case-insensitive) — pour dériver isDefault à la volée
