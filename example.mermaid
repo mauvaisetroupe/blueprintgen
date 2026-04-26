@@ -70,3 +70,16 @@ catalogservice -->> commandservice: ok
 commandservice -->> api_backend: success
 api_backend -->> webfrontend: 200 OK
 webfrontend -->> internet_user: Product updated
+
+
+
+---------
+---------
+
+  internet_user --> iam
+  internet_user --> tam__dmz
+  internet_user --> tam__ctie
+  tam__dmz --> webfrontend__dmz
+  tam__ctie --> webfrontend__ctie
+  webfrontend__ctie --> api_backend
+  webfrontend__dmz --> api_backend
