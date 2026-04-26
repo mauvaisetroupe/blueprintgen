@@ -12,11 +12,33 @@ const props = defineProps<{
   dagId: string
   category: Category
   components: Component[]
+  listKey?: 'components' | 'technicalComponents'
 }>()
 
 const store = useDagStore()
 
 const isDefault = computed(() => DEFAULT_CATEGORY_NAMES.has(props.category.name.toLowerCase()))
+
+function addComp(name: string, description: string, categoryId: string) {
+  if (props.listKey === 'technicalComponents')
+    store.addTechnicalComponent(props.dagId, name, description, categoryId)
+  else
+    store.addComponent(props.dagId, name, description, categoryId)
+}
+
+function updateComp(componentId: string, patch: Partial<Omit<Component, 'id'>>) {
+  if (props.listKey === 'technicalComponents')
+    store.updateTechnicalComponent(props.dagId, componentId, patch)
+  else
+    store.updateComponent(props.dagId, componentId, patch)
+}
+
+function deleteComp(componentId: string) {
+  if (props.listKey === 'technicalComponents')
+    store.deleteTechnicalComponent(props.dagId, componentId)
+  else
+    store.deleteComponent(props.dagId, componentId)
+}
 
 // --- Move component to another category ---
 const movePopover = ref()
@@ -37,9 +59,13 @@ function openMovePopover(event: Event, component: Component) {
 
 function moveToCategory(targetCategoryId: string) {
   if (!movingComponent.value) return
-  store.updateComponent(props.dagId, movingComponent.value.id, { categoryId: targetCategoryId })
+  updateComp(movingComponent.value.id, { categoryId: targetCategoryId })
   movePopover.value.hide()
   movingComponent.value = null
+}
+
+function deleteCompById(componentId: string) {
+  deleteComp(componentId)
 }
 
 // --- Category name editing ---
@@ -73,16 +99,16 @@ async function focusCell(rowIndex: number, colIndex: number) {
 
 // --- Inline updates ---
 function updateName(component: Component, value: string) {
-  store.updateComponent(props.dagId, component.id, { name: value })
+  updateComp(component.id, { name: value })
 }
 
 function updateDescription(component: Component, value: string) {
-  store.updateComponent(props.dagId, component.id, { description: value })
+  updateComp(component.id, { description: value })
 }
 
 // --- Add row ---
 async function addRow(focusRow?: number) {
-  store.addComponent(props.dagId, '', '', props.category.id)
+  addComp('', '', props.category.id)
   const newIndex = focusRow ?? props.components.length
   await focusCell(newIndex, 0)
 }
@@ -110,7 +136,7 @@ function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
     const component = props.components[rowIndex]
     if (component && component.name === '' && component.description === '') {
       e.preventDefault()
-      store.deleteComponent(props.dagId, component.id)
+      deleteComp(component.id)
       focusCell(Math.max(0, rowIndex - 1), 0)
     }
   }
@@ -134,14 +160,12 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
 
     const existingComponent = props.components[currentRow]
     if (i === 0 && existingComponent) {
-      // Fill into the current row
-      store.updateComponent(props.dagId, existingComponent.id, {
+      updateComp(existingComponent.id, {
         name: name.trim(),
         description: description?.trim() ?? '',
       })
     } else {
-      // Create new rows for subsequent lines
-      store.addComponent(props.dagId, name.trim(), description?.trim() ?? '', props.category.id)
+      addComp(name.trim(), description?.trim() ?? '', props.category.id)
     }
     currentRow++
   }
@@ -224,7 +248,7 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
               size="small"
               text
               severity="danger"
-              @click="store.deleteComponent(dagId, component.id)"
+              @click="deleteCompById(component.id)"
             />
           </td>
         </tr>
