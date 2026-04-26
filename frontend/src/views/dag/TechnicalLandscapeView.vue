@@ -7,8 +7,12 @@ import type { ComponentInstance, TechnicalRelation } from '@/types/dag'
 import {
   generateTechnicalLandscapeDsl,
   generateTechnicalLandscapeStructure,
+  generateTechnicalLandscapeCommentHeader,
   generateTechnicalRelationsBody,
+  generateFixedRelationsBody,
   parseTechnicalRelationsBody,
+  getFixedRelationData,
+  validateTechnicalRelationsBody,
 } from '@/utils/technicalLandscapeDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
@@ -41,8 +45,11 @@ const dslEdit = inject<Ref<boolean>>('dslEdit')!
 // Corps éditable des relations (mode DSL uniquement)
 const localRelationsBody = ref(dag.value ? generateTechnicalRelationsBody(dag.value) : '')
 
-// Header read-only : structure (zones + composants + styles)
-const dslReadOnlyHeader = computed(() => dag.value ? generateTechnicalLandscapeStructure(dag.value) : '')
+// Header read-only affiché dans l'éditeur : commentaires avec les node IDs disponibles
+const dslReadOnlyHeader = computed(() => dag.value ? generateTechnicalLandscapeCommentHeader(dag.value) : '')
+
+// Structure complète pour le rendu Mermaid (zones + composants + styles)
+const dslStructure = computed(() => dag.value ? generateTechnicalLandscapeStructure(dag.value) : '')
 
 // Node IDs pour l'autocomplétion dans l'éditeur DSL
 const completionNames = computed(() => {
@@ -67,8 +74,22 @@ const completionNames = computed(() => {
   return names
 })
 
+// Y a-t-il au moins une relation avec un côté multi-instance ?
+const hasMultiInstanceRelations = computed(() => {
+  if (!dag.value) return false
+  const instancesByComponent = new Map<string, number>()
+  for (const inst of dag.value.technicalLandscape.instances)
+    instancesByComponent.set(inst.componentId, (instancesByComponent.get(inst.componentId) ?? 0) + 1)
+  const validIds = new Set(dag.value.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
+  const rels = dag.value.relations.filter((r) => validIds.has(r.fromComponentId) && validIds.has(r.toComponentId))
+  return rels.some(
+    (r) => (instancesByComponent.get(r.fromComponentId) ?? 0) > 1 || (instancesByComponent.get(r.toComponentId) ?? 0) > 1,
+  )
+})
+
 // Validation DSL (mode éditeur)
 const syntaxError = ref<string | null>(null)
+const semanticErrors = ref<string[]>([])
 const isValidating = ref(false)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -76,7 +97,10 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 const activeDsl = computed(() => {
   if (!dag.value) return ''
   if (dslEdit?.value && activeTab.value === 'relations') {
-    const parts = [dslReadOnlyHeader.value]
+    // Structure complète (zones/subgraphs) + relations fixes + arrows éditées
+    const parts = [dslStructure.value]
+    const fixed = generateFixedRelationsBody(dag.value)
+    if (fixed.trim()) parts.push(fixed)
     if (localRelationsBody.value.trim()) parts.push(localRelationsBody.value)
     return parts.join('\n')
   }
@@ -86,16 +110,15 @@ const activeDsl = computed(() => {
 watch(dslEdit, (mode) => {
   if (mode && dag.value) {
     localRelationsBody.value = generateTechnicalRelationsBody(dag.value)
-    syntaxError.value = null
-  } else {
-    syntaxError.value = null
   }
+  syntaxError.value    = null
+  semanticErrors.value = []
 })
 
 async function runValidation() {
   if (!dslEdit?.value || !dag.value) return
   const fullCode = activeDsl.value
-  if (!fullCode.trim()) { syntaxError.value = null; return }
+  if (!fullCode.trim()) { syntaxError.value = null; semanticErrors.value = []; return }
   isValidating.value = true
   syntaxError.value  = null
   try {
@@ -104,6 +127,7 @@ async function runValidation() {
     const raw = e instanceof Error ? e.message : 'Invalid syntax'
     syntaxError.value = raw.replace(/^Syntax error in text\s*\nmermaid version [\d.]+\s*\n?/i, '').trim() || 'Invalid syntax'
   }
+  semanticErrors.value = syntaxError.value ? [] : validateTechnicalRelationsBody(localRelationsBody.value, dag.value)
   isValidating.value = false
 }
 
@@ -112,8 +136,10 @@ function onRelationsChange(value: string) {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     if (!dag.value) return
-    const parsed = parseTechnicalRelationsBody(value, dag.value)
-    store.replaceTechnicalRelations(dag.value.id, parsed)
+    // Relations fixes (mono→mono) + relations éditées (multi-instance)
+    const fixed  = getFixedRelationData(dag.value)
+    const edited = parseTechnicalRelationsBody(value, dag.value)
+    store.replaceTechnicalRelations(dag.value.id, [...fixed, ...edited])
     runValidation()
   }, 400)
 }
@@ -399,16 +425,27 @@ async function copyMermaid() {
 
         <!-- ── Mode DSL (uniquement sur l'onglet Relations) ── -->
         <template v-if="dslEdit && activeTab === 'relations'">
-          <DslEditor
-            :model-value="localRelationsBody"
-            :read-only-header="dslReadOnlyHeader"
-            :completion-names="completionNames"
-            :validation-status="syntaxError ? 'syntax-error' : isValidating ? 'validating' : 'idle'"
-            @update:model-value="onRelationsChange"
-          />
-          <div v-if="syntaxError" class="dsl-error-bar">
-            <i class="pi pi-times-circle" /> {{ syntaxError }}
+          <div v-if="!hasMultiInstanceRelations" class="dsl-no-multi-zone">
+            <i class="pi pi-info-circle" />
+            No component is deployed in multiple zones. All relations are induced from the application landscape.
           </div>
+          <template v-else>
+            <DslEditor
+              :model-value="localRelationsBody"
+              :read-only-header="dslReadOnlyHeader"
+              :completion-names="completionNames"
+              :validation-status="syntaxError ? 'syntax-error' : semanticErrors.length > 0 ? 'warnings' : isValidating ? 'validating' : 'idle'"
+              @update:model-value="onRelationsChange"
+            />
+            <div v-if="syntaxError" class="dsl-error-bar">
+              <i class="pi pi-times-circle" /> {{ syntaxError }}
+            </div>
+            <div v-if="semanticErrors.length > 0 && !syntaxError" class="dsl-warning-bar">
+              <div v-for="(err, i) in semanticErrors" :key="i">
+                <i class="pi pi-exclamation-triangle" /> {{ err }}
+              </div>
+            </div>
+          </template>
         </template>
 
         <!-- ── Mode guidé : contenu du tab actif ── -->
@@ -486,7 +523,10 @@ async function copyMermaid() {
 
         <!-- ── TAB : Relations ── -->
         <div v-else-if="activeTab === 'relations'" class="tech-sections">
-          <p v-if="logicalRelations.length === 0" class="empty-state">
+          <p v-if="!hasMultiInstanceRelations && logicalRelations.length > 0" class="empty-state no-multi-zone">
+            No component is deployed in multiple zones. All relations are induced from the application landscape.
+          </p>
+          <p v-else-if="logicalRelations.length === 0" class="empty-state">
             No logical relations yet. Add relations in the Application Landscape<span v-if="!dag.landscape.autoSync"> or enable AutoSync</span>.
           </p>
 
@@ -690,6 +730,37 @@ async function copyMermaid() {
   color: #dc2626;
   flex-shrink: 0;
   white-space: pre-wrap;
+}
+
+.dsl-warning-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  font-family: monospace;
+  padding: 0.4rem 0.75rem;
+  background: #fffbeb;
+  border-top: 1px solid #fcd34d;
+  color: #92400e;
+  flex-shrink: 0;
+}
+
+.dsl-no-multi-zone {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1.5rem;
+  color: var(--p-text-muted-color);
+  font-style: italic;
+  font-size: 0.875rem;
+  background: var(--p-surface-50, #fafafa);
+  border-bottom: 1px solid var(--p-content-border-color);
+  flex-shrink: 0;
+}
+
+.empty-state.no-multi-zone {
+  font-style: italic;
+  color: var(--p-text-muted-color);
 }
 
 /* ── Sections communes ── */
