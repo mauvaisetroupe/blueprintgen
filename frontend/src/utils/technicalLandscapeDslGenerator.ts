@@ -1,6 +1,10 @@
-import type { Dag, NodeShape } from '@/types/dag'
+import type { Dag, Component, NodeShape } from '@/types/dag'
 import { DEFAULT_SHAPE_BY_NAME, DEFAULT_ZONE_COLORS, allNetworkZones, allCategories } from '@/types/dag'
 import { toNodeId } from './landscapeDslGenerator'
+
+function allComps(dag: Dag): Component[] {
+  return [...dag.components, ...(dag.technicalComponents ?? [])]
+}
 
 /**
  * Génère le DSL Mermaid du landscape technique.
@@ -22,7 +26,7 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   const instancesByComponent = buildInstancesByComponent(tl)
 
   // Composants sans aucune instance → groupe "Unassigned"
-  const unassigned = dag.components.filter(
+  const unassigned = allComps(dag).filter(
     (c) => c.name.trim() !== '' && !instancesByComponent.has(c.id),
   )
 
@@ -31,7 +35,7 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   const renderedZoneIds: string[] = []
 
   for (const zone of zones) {
-    const componentsInZone = dag.components.filter(
+    const componentsInZone = allComps(dag).filter(
       (c) => c.name.trim() !== '' && tl.instances.some((i) => i.componentId === c.id && i.networkZoneId === zone.id),
     )
     if (componentsInZone.length === 0) continue
@@ -78,7 +82,7 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   }
 
   // Relations
-  const validIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
+  const validIds = new Set(allComps(dag).filter((c) => c.name.trim() !== '').map((c) => c.id))
   const manualKeys = new Set(dag.relations.map((r) => `${r.fromComponentId}->${r.toComponentId}`))
   const relationsToRender = [...dag.relations]
 
@@ -111,8 +115,8 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
   for (const rel of relationsToRender) {
     if (!validIds.has(rel.fromComponentId) || !validIds.has(rel.toComponentId)) continue
 
-    const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)!
-    const toComp   = dag.components.find((c) => c.id === rel.toComponentId)!
+    const fromComp = allComps(dag).find((c) => c.id === rel.fromComponentId)!
+    const toComp   = allComps(dag).find((c) => c.id === rel.toComponentId)!
     const key      = `${rel.fromComponentId}->${rel.toComponentId}`
     const techRels = techRelsByKey.get(key)
 
@@ -176,7 +180,7 @@ export function getEditableNodeIds(dag: Dag): Set<string> {
   const nodeIds = new Set<string>()
   for (const compId of involvedCompIds) {
     const insts = instancesByComponent.get(compId) ?? []
-    const comp  = dag.components.find((c) => c.id === compId)
+    const comp  = allComps(dag).find((c) => c.id === compId)
     if (!comp) continue
     const isMulti = insts.length > 1
     for (const inst of insts) {
@@ -236,8 +240,8 @@ export function validateTechnicalRelationsBody(body: string, dag: Dag): string[]
     if (from && to) {
       const key = `${from.compId}->${to.compId}`
       if (!editableLogical.has(key)) {
-        const fromName = dag.components.find((c) => c.id === from.compId)?.name ?? fromNodeId
-        const toName   = dag.components.find((c) => c.id === to.compId)?.name   ?? toNodeId_
+        const fromName = allComps(dag).find((c) => c.id === from.compId)?.name ?? fromNodeId
+        const toName   = allComps(dag).find((c) => c.id === to.compId)?.name   ?? toNodeId_
         errors.push(`No relation defined between "${fromName}" and "${toName}"`)
       }
     }
@@ -269,7 +273,7 @@ export function generateTechnicalLandscapeCommentHeader(dag: Dag): string {
   const nodes: string[] = []
   for (const compId of involvedCompIds) {
     const insts = instancesByComponent.get(compId) ?? []
-    const comp  = dag.components.find((c) => c.id === compId)
+    const comp  = allComps(dag).find((c) => c.id === compId)
     if (!comp) continue
     const isMulti = insts.length > 1
     for (const inst of insts) {
@@ -312,7 +316,7 @@ export function generateTechnicalLandscapeStructure(dag: Dag): string {
 
   const instancesByComponent = buildInstancesByComponent(tl)
 
-  const unassigned = dag.components.filter(
+  const unassigned = allComps(dag).filter(
     (c) => c.name.trim() !== '' && !instancesByComponent.has(c.id),
   )
 
@@ -320,7 +324,7 @@ export function generateTechnicalLandscapeStructure(dag: Dag): string {
   const renderedZoneIds: string[] = []
 
   for (const zone of zones) {
-    const componentsInZone = dag.components.filter(
+    const componentsInZone = allComps(dag).filter(
       (c) => c.name.trim() !== '' && tl.instances.some((i) => i.componentId === c.id && i.networkZoneId === zone.id),
     )
     if (componentsInZone.length === 0) continue
@@ -416,8 +420,8 @@ function buildRelationLines(dag: Dag, multiOnly: boolean): string {
 
     if (multiOnly !== isMulti) continue
 
-    const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)!
-    const toComp   = dag.components.find((c) => c.id === rel.toComponentId)!
+    const fromComp = allComps(dag).find((c) => c.id === rel.fromComponentId)!
+    const toComp   = allComps(dag).find((c) => c.id === rel.toComponentId)!
     const key      = `${rel.fromComponentId}->${rel.toComponentId}`
     const techRels = techRelsByKey.get(key)
 
@@ -544,7 +548,7 @@ function resolveNodeIdToInstance(
     const suffix = `__${toNodeId(zone.name)}`
     if (nodeId.endsWith(suffix)) {
       const compNodeId = nodeId.slice(0, -suffix.length)
-      const comp = dag.components.find((c) => c.name.trim() !== '' && toNodeId(c.name) === compNodeId)
+      const comp = allComps(dag).find((c) => c.name.trim() !== '' && toNodeId(c.name) === compNodeId)
       if (comp) {
         const inst = tl.instances.find((i) => i.componentId === comp.id && i.networkZoneId === zone.id)
         if (inst) return { compId: comp.id, instId: inst.id }
@@ -553,7 +557,7 @@ function resolveNodeIdToInstance(
   }
 
   // Single-instance
-  const comp = dag.components.find((c) => c.name.trim() !== '' && toNodeId(c.name) === nodeId)
+  const comp = allComps(dag).find((c) => c.name.trim() !== '' && toNodeId(c.name) === nodeId)
   if (comp) {
     const insts = tl.instances.filter((i) => i.componentId === comp.id)
     if (insts.length > 0) return { compId: comp.id, instId: insts[0]!.id }
@@ -595,7 +599,7 @@ function buildInstancesByComponent(tl: Dag['technicalLandscape']) {
 
 // Construit la liste unifiée des relations logiques à rendre (manual + autoSync)
 function buildRelationsToRender(dag: Dag) {
-  const validIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => c.id))
+  const validIds = new Set(allComps(dag).filter((c) => c.name.trim() !== '').map((c) => c.id))
   const manualKeys = new Set(dag.relations.map((r) => `${r.fromComponentId}->${r.toComponentId}`))
   const result = [...dag.relations]
 

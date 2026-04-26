@@ -59,7 +59,8 @@ const completionNames = computed(() => {
   const countByComp = new Map<string, number>()
   for (const inst of instances) countByComp.set(inst.componentId, (countByComp.get(inst.componentId) ?? 0) + 1)
   const names: string[] = []
-  for (const comp of dag.value.components.filter((c) => c.name.trim() !== '')) {
+  const allComps = [...dag.value.components, ...dag.value.technicalComponents]
+  for (const comp of allComps.filter((c) => c.name.trim() !== '')) {
     const count = countByComp.get(comp.id) ?? 0
     if (count === 0) continue
     if (count === 1) {
@@ -147,15 +148,16 @@ function onRelationsChange(value: string) {
 // --- DSL (mode guidé uniquement, pour rétrocompatibilité) ---
 const dsl = computed(() => dag.value ? generateTechnicalLandscapeDsl(dag.value) : '')
 
-// --- Composants groupés par catégorie (tab Components) ---
+// --- Composants groupés par catégorie (tab Components) — business + technical ---
 const categoriesWithComponents = computed(() => {
   if (!dag.value) return []
+  const allComps = [...dag.value.components, ...dag.value.technicalComponents]
   return allCategories(dag.value)
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((cat) => ({
       category: cat,
-      components: dag.value!.components.filter((c) => c.categoryId === cat.id && c.name.trim() !== ''),
+      components: allComps.filter((c) => c.categoryId === cat.id && c.name.trim() !== ''),
     }))
     .filter((g) => g.components.length > 0)
 })
@@ -189,7 +191,11 @@ function toggleZone(componentId: string, zoneId: string) {
 
 function updateComponent(componentId: string, patch: { technology?: string; framework?: string; constraints?: string }) {
   if (!dag.value) return
-  store.updateComponent(dag.value.id, componentId, patch)
+  const isTechnical = dag.value.technicalComponents.some((c) => c.id === componentId)
+  if (isTechnical)
+    store.updateTechnicalComponent(dag.value.id, componentId, patch)
+  else
+    store.updateComponent(dag.value.id, componentId, patch)
 }
 
 // --- Gestion des zones réseau ---
