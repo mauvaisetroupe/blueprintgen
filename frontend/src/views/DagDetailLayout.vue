@@ -84,53 +84,50 @@ function saveLocally() {
 
 <template>
   <div v-if="dag" class="detail-layout">
-
+    <!-- Tabs -->
     <Tabs value="0" class="detail-tabs">
       <TabList>
         <Tab
           v-for="tab in tabs"
           :key="tab.value"
           :value="tab.value"
-          as="div"
+          @click="$router.push(`/dag/${dag.id}/${tab.route}`)"
         >
           <router-link :to="`/dag/${dag.id}/${tab.route}`" class="tab-link">
             {{ tab.label }}
           </router-link>
         </Tab>
-
-              <div class="header-actions">
-
-        <div class="elk-toggle">
-          <ToggleSwitch
-            v-model="dslEdit"
-            :disabled="isDslEditDisabled"
+        <div class="header-actions">
+          <div class="elk-toggle">
+            <ToggleSwitch
+              v-model="dslEdit"
+              :disabled="isDslEditDisabled"
+              size="small"
+              input-id="dsl-switch"
+            />
+            <label for="dsl-switch">DSL Edit</label>
+          </div>
+          <Button
+            icon="pi pi-save"
             size="small"
-            input-id="dsl-switch"
+            severity="secondary"
+            text
+            title="Save locally"
+            label="Save locally"
+            @click="saveLocally"
           />
-          <label for="dsl-switch">DSL Edit</label>
+          <Button
+            label="Export PPTX"
+            icon="pi pi-file-export"
+            size="small"
+            severity="secondary"
+            :loading="exporting"
+            @click="handleExport"
+          />
         </div>
-
-        <Button
-          icon="pi pi-save"
-          size="small"
-          severity="secondary"
-          text
-          title="Save locally"
-          label="Save locally"
-          @click="saveLocally"
-        />
-        <Button
-          label="Export PPTX"
-          icon="pi pi-file-export"
-          size="small"
-          severity="secondary"
-          :loading="exporting"
-          @click="handleExport"
-        />
-      </div>
       </TabList>
     </Tabs>
-
+    <!-- content -->
     <div class="tab-content">
       <router-view />
     </div>
