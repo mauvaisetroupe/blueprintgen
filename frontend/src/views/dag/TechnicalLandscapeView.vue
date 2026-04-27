@@ -46,7 +46,9 @@ watch(useElk, (val) => { if (dag.value) store.setTechnicalLandscapeUseElk(dag.va
 const dslEdit = inject<Ref<boolean>>('dslEdit')!
 
 // Corps éditable des relations : uniquement les relations multi-instance
-const localRelationsBody = ref(dag.value ? generateTechnicalRelationsBody(dag.value) : '')
+const localRelationsBody = computed(() => {
+  return  dag.value ? generateTechnicalRelationsBody(dag.value) : ''
+})
 
 // Header read-only : commentaires (node IDs) + relations mono-instance (automatiques, pas de choix de zone)
 const dslRelationsReadOnlyHeader = computed(() => {

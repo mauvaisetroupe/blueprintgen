@@ -401,43 +401,62 @@ export function generateFixedRelationsBody(dag: Dag): string {
 
 /**
  * Flèches éditables :
- * - relations business multi-instance (choix de zone)
- * - toutes les relations impliquant au moins un composant technique (stockées dans tl.technicalRelations)
+ * - relations business multi-instance (choix de zone), au moins le "from" ou le "to" est multi-instance
+ * - au moins un composant technique (stored in tl.technicalRelations)
  */
 export function generateTechnicalRelationsBody(dag: Dag): string {
   const tl = dag.technicalLandscape
-  const techIds = new Set((dag.technicalComponents ?? []).map((c) => c.id))
   const zones = allNetworkZones(tl)
+
+  const techIds = new Set((dag.technicalComponents ?? []).map(c => c.id))
   const instancesByComponent = buildInstancesByComponent(tl)
-  const instanceById = new Map(tl.instances.map((i) => [i.id, i]))
+  const instanceById = new Map(tl.instances.map(i => [i.id, i]))
+  const components = allComps(dag)
 
   const lines: string[] = []
-
-  // Partie 1 : relations business multi-instance
-  const businessMulti = buildRelationLines(dag, true)
-  if (businessMulti.trim()) lines.push(businessMulti)
-
-  // Partie 2 : relations stockées impliquant au moins un composant technique
   const seen = new Set<string>()
+
   for (const tr of tl.technicalRelations) {
-    if (!techIds.has(tr.fromComponentId) && !techIds.has(tr.toComponentId)) continue
-    const key = `${tr.fromInstanceId}->${tr.toInstanceId}`
-    if (seen.has(key)) continue
-    seen.add(key)
-
-    const fromComp = allComps(dag).find((c) => c.id === tr.fromComponentId)
-    const toComp   = allComps(dag).find((c) => c.id === tr.toComponentId)
-    if (!fromComp || !toComp) continue
-
     const fromInst = instanceById.get(tr.fromInstanceId)
     const toInst   = instanceById.get(tr.toInstanceId)
+    if (!fromInst || !toInst) continue
+
+    const fromComp = components.find(c => c.id === tr.fromComponentId)
+    const toComp   = components.find(c => c.id === tr.toComponentId)
+    if (!fromComp || !toComp) continue
+
     const fromIsMulti = (instancesByComponent.get(tr.fromComponentId)?.length ?? 0) > 1
     const toIsMulti   = (instancesByComponent.get(tr.toComponentId)?.length   ?? 0) > 1
-    const fromZone = fromInst ? zones.find((z) => z.id === fromInst.networkZoneId) : undefined
-    const toZone   = toInst   ? zones.find((z) => z.id === toInst.networkZoneId)   : undefined
-    const fromId = fromZone ? nodeIdForInstance(fromComp.name, fromZone.name, fromIsMulti) : toNodeId(fromComp.name)
-    const toId   = toZone   ? nodeIdForInstance(toComp.name,   toZone.name,   toIsMulti)   : toNodeId(toComp.name)
-    lines.push(tr.protocol ? `  ${fromId} -->|${sanitizeLabel(tr.protocol)}| ${toId}` : `  ${fromId} --> ${toId}`)
+    const isTech =
+      techIds.has(tr.fromComponentId) ||
+      techIds.has(tr.toComponentId)
+
+    // eliginility rule
+    if (!isTech && !fromIsMulti && !toIsMulti) continue
+
+    // duplication  (protocol is ignored)
+    const dedupKey = `${tr.fromInstanceId}->${tr.toInstanceId}}`
+    if (seen.has(dedupKey)) continue
+    seen.add(dedupKey)
+
+    const fromZone = zones.find(z => z.id === fromInst.networkZoneId)
+    const toZone   = zones.find(z => z.id === toInst.networkZoneId)
+
+    const fromId =
+      fromIsMulti && fromZone
+        ? nodeIdForInstance(fromComp.name, fromZone.name, true)
+        : toNodeId(fromComp.name)
+
+    const toId =
+      toIsMulti && toZone
+        ? nodeIdForInstance(toComp.name, toZone.name, true)
+        : toNodeId(toComp.name)
+
+    lines.push(
+      tr.protocol
+        ? `  ${fromId} -->|${sanitizeLabel(tr.protocol)}| ${toId}`
+        : `  ${fromId} --> ${toId}`,
+    )
   }
 
   return lines.join('\n')
