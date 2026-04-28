@@ -12,6 +12,7 @@ import {
   getCompletionNames,
 } from '@/utils/technicalLandscapeDslGenerator'
 import DslEditor from '@/components/DslEditor.vue'
+import ImportRelationsDialog from '@/components/dag/ImportRelationsDialog.vue'
 import Button from 'primevue/button'
 import mermaid from 'mermaid'
 
@@ -138,6 +139,16 @@ const allInstances = computed(() => {
   })
 })
 
+const showImportDialog = ref(false)
+
+const hasImportedRelations = computed(() =>
+  tl.value?.technicalRelations.some((r) => r.imported) ?? false,
+)
+
+function cleanImportedRelations() {
+  if (dag.value) store.cleanImportedTechnicalRelations(dag.value.id)
+}
+
 interface AddRelState { fromInstanceId: string; toInstanceId: string; protocol: string }
 const addingRel = ref<AddRelState | null>(null)
 
@@ -159,6 +170,34 @@ function submitAddRel() {
 
 <template>
   <div v-if="dag && tl" class="tech-dsl-panel">
+
+    <!-- Toolbar import -->
+    <div class="rel-toolbar">
+      <Button
+        v-if="hasImportedRelations"
+        label="Clean imported"
+        icon="pi pi-trash"
+        size="small"
+        severity="danger"
+        text
+        @click="cleanImportedRelations"
+      />
+      <Button
+        label="Import from landscape"
+        icon="pi pi-copy"
+        size="small"
+        severity="secondary"
+        outlined
+        @click="showImportDialog = true"
+      />
+    </div>
+
+    <ImportRelationsDialog
+      :dag-id="dag.id"
+      :visible="showImportDialog"
+      @update:visible="showImportDialog = $event"
+    />
+
       <!-- Mode DSL -->
       <template v-if="dslEdit">
         <DslEditor
@@ -336,4 +375,10 @@ function submitAddRel() {
 .add-rel-btn { align-self: flex-start; }
 
 .empty-state { color: var(--p-text-muted-color); font-style: italic; font-size: 0.875rem; padding: 1rem 0; }
+
+.rel-toolbar {
+  display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem;
+  padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--p-content-border-color);
+  flex-shrink: 0;
+}
 </style>
