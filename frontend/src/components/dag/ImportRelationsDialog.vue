@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import { allNetworkZones, DEFAULT_ZONE_COLORS } from '@/types/dag'
+import { allEffectiveLandscapeRelations } from '@/utils/landscapeDslGenerator'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
@@ -43,7 +44,7 @@ const choices = computed((): RelationChoice[] => {
   const result: RelationChoice[] = []
   const allComps = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
 
-  for (const rel of dag.value.relations) {
+  for (const rel of allEffectiveLandscapeRelations(dag.value)) {
     const fromComp = allComps.find((c) => c.id === rel.fromComponentId)
     const toComp   = allComps.find((c) => c.id === rel.toComponentId)
     if (!fromComp || !toComp) continue

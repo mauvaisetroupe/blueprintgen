@@ -62,6 +62,38 @@ function collectFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComp
 
 // ─── Public building blocks ───────────────────────────────────────────────────
 
+/**
+ * Toutes les relations effectives du landscape : manuelles + induites des flows si autoSync.
+ * Dédupliquées par paire (fromComponentId, toComponentId).
+ */
+export function allEffectiveLandscapeRelations(
+  dag: Dag,
+): Array<{ fromComponentId: string; toComponentId: string; label?: string; protocol?: string }> {
+  const valid = validComponentIds(dag)
+  const seen  = new Set<string>()
+  const result: Array<{ fromComponentId: string; toComponentId: string; label?: string; protocol?: string }> = []
+
+  for (const r of dag.relations) {
+    if (!valid.has(r.fromComponentId) || !valid.has(r.toComponentId)) continue
+    const key = `${r.fromComponentId}->${r.toComponentId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({ fromComponentId: r.fromComponentId, toComponentId: r.toComponentId, label: r.label, protocol: r.protocol })
+  }
+
+  if (dag.landscape.autoSync) {
+    for (const r of collectFlowRelations(dag)) {
+      if (!valid.has(r.fromComponentId) || !valid.has(r.toComponentId)) continue
+      const key = `${r.fromComponentId}->${r.toComponentId}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ fromComponentId: r.fromComponentId, toComponentId: r.toComponentId })
+    }
+  }
+
+  return result
+}
+
 /** Frontmatter Mermaid + directive flowchart (partie read-only haute de l'éditeur) */
 export function generateLandscapeHeader(dag: Dag): string {
   const lines = ['---', 'config:', '    theme: neutral']
