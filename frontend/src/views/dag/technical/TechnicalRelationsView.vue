@@ -2,7 +2,7 @@
 import { computed, inject, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { allNetworkZones } from '@/types/dag'
+import { allNetworkZones, allCategories } from '@/types/dag'
 import {
   generateTechnicalLandscapeDsl,
   generateTechnicalLandscapeCommentHeader,
@@ -132,16 +132,27 @@ const editableRelations = computed(() => {
   return tl.value.technicalRelations
 })
 
-// Liste de toutes les instances avec leur label "Composant [Zone]" pour les selects
-const allInstances = computed(() => {
+// Instances groupées par catégorie pour les <optgroup> des selects
+const groupedInstances = computed(() => {
   if (!tl.value || !dag.value) return []
   const allComps = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
-  return tl.value.instances.map((inst) => {
-    const comp = allComps.find((c) => c.id === inst.componentId)
-    const zone = zones.value.find((z) => z.id === inst.networkZoneId)
-    return { id: inst.id, label: `${comp?.name ?? '?'} [${zone?.name ?? '?'}]` }
-  })
+  const cats = allCategories(dag.value).sort((a, b) => a.order - b.order)
+  return cats
+    .map((cat) => ({
+      category: cat,
+      instances: tl.value!.instances
+        .filter((inst) => allComps.find((c) => c.id === inst.componentId)?.categoryId === cat.id)
+        .map((inst) => {
+          const comp = allComps.find((c) => c.id === inst.componentId)
+          const zone = zones.value.find((z) => z.id === inst.networkZoneId)
+          return { id: inst.id, label: `${comp?.name ?? '?'} [${zone?.name ?? '?'}]` }
+        }),
+    }))
+    .filter((g) => g.instances.length > 0)
 })
+
+// Liste plate pour l'initialisation du formulaire
+const allInstances = computed(() => groupedInstances.value.flatMap((g) => g.instances))
 
 const showImportDialog = ref(false)
 
@@ -264,11 +275,15 @@ function submitAddRel() {
         <!-- Formulaire d'ajout -->
         <div v-if="addingRel" class="add-rel-form">
           <select v-model="addingRel.fromInstanceId" class="inst-select">
-            <option v-for="inst in allInstances" :key="inst.id" :value="inst.id">{{ inst.label }}</option>
+            <optgroup v-for="group in groupedInstances" :key="group.category.id" :label="group.category.name">
+              <option v-for="inst in group.instances" :key="inst.id" :value="inst.id">{{ inst.label }}</option>
+            </optgroup>
           </select>
           <span class="rel-arrow-sm">→</span>
           <select v-model="addingRel.toInstanceId" class="inst-select">
-            <option v-for="inst in allInstances" :key="inst.id" :value="inst.id">{{ inst.label }}</option>
+            <optgroup v-for="group in groupedInstances" :key="group.category.id" :label="group.category.name">
+              <option v-for="inst in group.instances" :key="inst.id" :value="inst.id">{{ inst.label }}</option>
+            </optgroup>
           </select>
           <input v-model="addingRel.protocol" class="cell-input protocol-input" placeholder="Protocol"
             @keyup.enter="submitAddRel" @keyup.escape="addingRel = null" />
