@@ -57,8 +57,6 @@ const completionNames = computed(() => {
   return getCompletionNames(dag?.value)
 })
 
-// Y a-t-il au moins une relation avec un côté multi-instance ?
-
 // Validation DSL (mode éditeur)
 const syntaxError = ref<string | null>(null)
 const semanticErrors = ref<string[]>([])
@@ -85,6 +83,12 @@ async function runValidation() {
   }
   semanticErrors.value = syntaxError.value ? [] : validateTechnicalRelationsBody(localRelationsBody.value, dag.value)
   isValidating.value = false
+}
+
+function refreshFromStore() {
+  if (!dag.value) return
+  localRelationsBody.value = generateTechnicalRelationsBody(dag.value)
+  if (dslEdit?.value) runValidation()
 }
 
 // Function call when codemirror content change
@@ -146,7 +150,9 @@ const hasImportedRelations = computed(() =>
 )
 
 function cleanImportedRelations() {
-  if (dag.value) store.cleanImportedTechnicalRelations(dag.value.id)
+  if (!dag.value) return
+  store.cleanImportedTechnicalRelations(dag.value.id)
+  refreshFromStore()
 }
 
 interface AddRelState { fromInstanceId: string; toInstanceId: string; protocol: string }
@@ -196,6 +202,7 @@ function submitAddRel() {
       :dag-id="dag.id"
       :visible="showImportDialog"
       @update:visible="showImportDialog = $event"
+      @imported="refreshFromStore"
     />
 
       <!-- Mode DSL -->

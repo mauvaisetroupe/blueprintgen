@@ -7,7 +7,7 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 
 const props = defineProps<{ dagId: string; visible: boolean }>()
-const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
+const emit = defineEmits<{ 'update:visible': [value: boolean]; imported: [] }>()
 
 const store = useDagStore()
 const dag = computed(() => store.getDag(props.dagId))
@@ -118,6 +118,7 @@ function doImport() {
       label:           c.label,
     })),
   )
+  emit('imported')
   emit('update:visible', false)
 }
 </script>
