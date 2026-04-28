@@ -28,6 +28,10 @@ const router = createRouter({
       component: () => import('@/views/DagDetailLayout.vue'),
       children: [
         {
+          path: '',
+          redirect: { name: 'dag-overview' },
+        },
+        {
           path: 'components',
           name: 'dag-overview',
           component: () => import('@/views/dag/DagOverviewView.vue'),
@@ -46,8 +50,27 @@ const router = createRouter({
         },
         {
           path: 'technical',
-          name: 'dag-technical',
           component: () => import('@/views/dag/TechnicalLandscapeView.vue'),
+          children: [
+            {
+              path: 'components',
+              name: 'dag-technical-zones',
+              component: () =>
+                import('@/views/dag/technical/TechnicalComponentsView.vue'),
+            },
+            {
+              path: 'relations',
+              name: 'dag-technical-relations',
+              component: () =>
+                import('@/views/dag/technical/TechnicalRelationsView.vue'),
+            },
+            {
+              path: '',
+              redirect: { name: 'dag-technical-zones' },
+            },
+
+          ],
+
         },
         {
           path: 'flows',
