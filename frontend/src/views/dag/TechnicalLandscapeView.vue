@@ -10,6 +10,7 @@ import {
 } from '@/utils/technicalLandscapeDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
+import ImportRelationsDialog from '@/components/dag/ImportRelationsDialog.vue'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import Splitter from 'primevue/splitter'
@@ -160,6 +161,16 @@ const activeSubRoute = computed<'components' | 'relations'>(() => {
   return 'components'
 })
 
+const showImportDialog = ref(false)
+
+const hasImportedRelations = computed(() =>
+  dag.value?.technicalLandscape.technicalRelations.some((r) => r.imported) ?? false,
+)
+
+function cleanImportedRelations() {
+  if (dag.value) store.cleanImportedTechnicalRelations(dag.value.id)
+}
+
 function onTabChange(value: string | number) {
   router.push({
     name:
@@ -187,6 +198,25 @@ function onTabChange(value: string | number) {
             <TabList>
               <Tab value="components">Network zones</Tab>
               <Tab value="relations">Relations</Tab>
+              <div v-if="activeSubRoute === 'relations'" class="tab-actions">
+                <Button
+                  v-if="hasImportedRelations"
+                  label="Clean imported"
+                  icon="pi pi-trash"
+                  size="small"
+                  severity="danger"
+                  text
+                  @click="cleanImportedRelations"
+                />
+                <Button
+                  label="Import from landscape"
+                  icon="pi pi-copy"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="showImportDialog = true"
+                />
+              </div>
             </TabList>
           </Tabs>
           <!-- CONTENU -->
@@ -221,6 +251,13 @@ function onTabChange(value: string | number) {
         </div>
       </SplitterPanel>
     </Splitter>
+
+    <ImportRelationsDialog
+      v-if="dag"
+      :dag-id="dag.id"
+      :visible="showImportDialog"
+      @update:visible="showImportDialog = $event"
+    />
   </div>
 
 </template>
@@ -239,7 +276,9 @@ function onTabChange(value: string | number) {
 /* ── Splitter ── */
 .tech-splitter { flex: 1; min-height: 0; border: none !important; }
 .tech-left-panel { overflow: hidden; padding: 0 !important; border-right: 1px solid var(--p-content-border-color); display: flex; flex-direction: column; }
-.tech-tabs { display: flex; flex-direction: column;  }
+.tech-tabs { display: flex; flex-direction: column; }
+.tech-tabs :deep(.p-tablist) { display: flex; align-items: center; }
+.tab-actions { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; padding-right: 0.5rem; }
 .tech-tabs :deep(.p-tabpanels) { flex: 1; min-height: 0; }
 .tech-tab-panels { flex: 1; min-height: 0; overflow: hidden; }
 .tech-tab-panels :deep(.p-tabpanel) { height: 100%; }

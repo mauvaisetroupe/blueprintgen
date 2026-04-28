@@ -813,7 +813,40 @@ export const useDagStore = defineStore(
     ) {
       const dag = getDag(dagId)
       if (!dag) return
-      dag.technicalLandscape.technicalRelations = relations.map((r) => ({ id: generateId(), ...r }))
+      // Préserve le flag imported pour les relations qui existent déjà (édition DSL ne doit pas perdre le tag)
+      const existing = dag.technicalLandscape.technicalRelations
+      dag.technicalLandscape.technicalRelations = relations.map((r) => {
+        const prev = existing.find(
+          (e) => e.fromInstanceId === r.fromInstanceId && e.toInstanceId === r.toInstanceId,
+        )
+        return { id: prev?.id ?? generateId(), ...r, imported: prev?.imported }
+      })
+      dag.updatedAt = now()
+    }
+
+    function importTechnicalRelationsFromLandscape(
+      dagId: string,
+      selections: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; protocol?: string; label?: string }>,
+    ) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      for (const sel of selections) {
+        const alreadyExists = dag.technicalLandscape.technicalRelations.some(
+          (tr) => tr.fromInstanceId === sel.fromInstanceId && tr.toInstanceId === sel.toInstanceId,
+        )
+        if (!alreadyExists) {
+          dag.technicalLandscape.technicalRelations.push({ id: generateId(), ...sel, imported: true })
+        }
+      }
+      dag.updatedAt = now()
+    }
+
+    function cleanImportedTechnicalRelations(dagId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.technicalLandscape.technicalRelations = dag.technicalLandscape.technicalRelations.filter(
+        (tr) => !tr.imported,
+      )
       dag.updatedAt = now()
     }
 
@@ -921,6 +954,8 @@ export const useDagStore = defineStore(
       updateTechnicalRelation,
       deleteTechnicalRelation,
       replaceTechnicalRelations,
+      importTechnicalRelationsFromLandscape,
+      cleanImportedTechnicalRelations,
       addTechnicalService,
       deleteTechnicalService,
       setTechnicalLandscapeUseElk,
