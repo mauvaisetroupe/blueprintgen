@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useDagStore } from '@/stores/dag'
-import { allNetworkZones, DEFAULT_ZONE_COLORS } from '@/types/dag'
+import { allNetworkZones, allCategories, DEFAULT_ZONE_COLORS } from '@/types/dag'
 import { allEffectiveLandscapeRelations } from '@/utils/landscapeDslGenerator'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
@@ -26,9 +26,17 @@ interface RelationChoice {
   toInstanceId: string
   fromZoneName: string
   toZoneName: string
+  fromCategoryName: string
+  toCategoryName: string
   protocol?: string
   label?: string
   alreadyExists: boolean
+}
+
+interface ChoiceGroup {
+  groupKey: string
+  label: string
+  choices: RelationChoice[]
 }
 
 // ── Données ─────────────────────────────────────────────────────────────────
@@ -43,6 +51,7 @@ const choices = computed((): RelationChoice[] => {
   if (!dag.value || !tl.value) return []
   const result: RelationChoice[] = []
   const allComps = [...dag.value.components, ...(dag.value.technicalComponents ?? [])]
+  const cats = allCategories(dag.value)
 
   for (const rel of allEffectiveLandscapeRelations(dag.value)) {
     const fromComp = allComps.find((c) => c.id === rel.fromComponentId)
@@ -52,6 +61,9 @@ const choices = computed((): RelationChoice[] => {
     const fromInstances = tl.value.instances.filter((i) => i.componentId === rel.fromComponentId)
     const toInstances   = tl.value.instances.filter((i) => i.componentId === rel.toComponentId)
     if (fromInstances.length === 0 || toInstances.length === 0) continue
+
+    const fromCategoryName = cats.find((c) => c.id === fromComp.categoryId)?.name ?? ''
+    const toCategoryName   = cats.find((c) => c.id === toComp.categoryId)?.name   ?? ''
 
     for (const fromInst of fromInstances) {
       for (const toInst of toInstances) {
@@ -70,6 +82,8 @@ const choices = computed((): RelationChoice[] => {
           toInstanceId:      toInst.id,
           fromZoneName:      fromZone?.name ?? '',
           toZoneName:        toZone?.name   ?? '',
+          fromCategoryName,
+          toCategoryName,
           protocol:          rel.protocol,
           label:             rel.label,
           alreadyExists,
@@ -78,6 +92,23 @@ const choices = computed((): RelationChoice[] => {
     }
   }
   return result
+})
+
+// Choices groupés par paire de catégories (fromCategory → toCategory)
+const groupedChoices = computed((): ChoiceGroup[] => {
+  const map = new Map<string, ChoiceGroup>()
+  for (const c of choices.value) {
+    const key = `${c.fromCategoryName}__${c.toCategoryName}`
+    if (!map.has(key)) {
+      map.set(key, {
+        groupKey: key,
+        label:    `${c.fromCategoryName} → ${c.toCategoryName}`,
+        choices:  [],
+      })
+    }
+    map.get(key)!.choices.push(c)
+  }
+  return [...map.values()]
 })
 
 const selected = ref<Set<string>>(new Set())
@@ -161,42 +192,47 @@ function doImport() {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="c in choices"
-            :key="c.key"
-            :class="{ 'row-exists': c.alreadyExists, 'row-selectable': !c.alreadyExists }"
-            @click="toggle(c.key, c.alreadyExists)"
-          >
-            <td class="col-check">
-              <Checkbox
-                :model-value="c.alreadyExists || selected.has(c.key)"
-                :disabled="c.alreadyExists"
-                binary
-                @click.stop
-                @update:model-value="toggle(c.key, c.alreadyExists)"
-              />
-            </td>
-            <td class="cell-name">{{ c.fromComponentName }}</td>
-            <td class="col-zone">
-              <span
-                v-if="c.fromZoneName"
-                class="zone-pill"
-                :style="{ background: zoneColors(c.fromZoneName).fill, borderColor: zoneColors(c.fromZoneName).stroke }"
-              >{{ c.fromZoneName }}</span>
-            </td>
-            <td class="col-arrow">→</td>
-            <td class="cell-name">{{ c.toComponentName }}</td>
-            <td class="col-zone">
-              <span
-                v-if="c.toZoneName"
-                class="zone-pill"
-                :style="{ background: zoneColors(c.toZoneName).fill, borderColor: zoneColors(c.toZoneName).stroke }"
-              >{{ c.toZoneName }}</span>
-            </td>
-            <td class="col-proto">
-              <span v-if="c.protocol" class="proto-badge">{{ c.protocol }}</span>
-            </td>
-          </tr>
+          <template v-for="group in groupedChoices" :key="group.groupKey">
+            <tr class="row-group-header">
+              <td colspan="7">{{ group.label }}</td>
+            </tr>
+            <tr
+              v-for="c in group.choices"
+              :key="c.key"
+              :class="{ 'row-exists': c.alreadyExists, 'row-selectable': !c.alreadyExists }"
+              @click="toggle(c.key, c.alreadyExists)"
+            >
+              <td class="col-check">
+                <Checkbox
+                  :model-value="c.alreadyExists || selected.has(c.key)"
+                  :disabled="c.alreadyExists"
+                  binary
+                  @click.stop
+                  @update:model-value="toggle(c.key, c.alreadyExists)"
+                />
+              </td>
+              <td class="cell-name">{{ c.fromComponentName }}</td>
+              <td class="col-zone">
+                <span
+                  v-if="c.fromZoneName"
+                  class="zone-pill"
+                  :style="{ background: zoneColors(c.fromZoneName).fill, borderColor: zoneColors(c.fromZoneName).stroke }"
+                >{{ c.fromZoneName }}</span>
+              </td>
+              <td class="col-arrow">→</td>
+              <td class="cell-name">{{ c.toComponentName }}</td>
+              <td class="col-zone">
+                <span
+                  v-if="c.toZoneName"
+                  class="zone-pill"
+                  :style="{ background: zoneColors(c.toZoneName).fill, borderColor: zoneColors(c.toZoneName).stroke }"
+                >{{ c.toZoneName }}</span>
+              </td>
+              <td class="col-proto">
+                <span v-if="c.protocol" class="proto-badge">{{ c.protocol }}</span>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </template>
@@ -230,6 +266,13 @@ function doImport() {
   text-transform: uppercase; letter-spacing: 0.05em;
 }
 .import-table tbody tr { transition: background 0.1s; }
+.row-group-header td {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--p-text-muted-color); padding: 0.5rem 0.5rem 0.2rem;
+  background: var(--p-surface-50, #fafafa); border-bottom: 1px solid var(--p-content-border-color);
+  border-top: 2px solid var(--p-content-border-color);
+}
+.row-group-header:first-child td { border-top: none; }
 .import-table tbody tr.row-selectable { cursor: pointer; }
 .import-table tbody tr.row-selectable:hover { background: var(--p-surface-50, #fafafa); }
 .import-table tbody tr.row-exists { opacity: 0.45; }
