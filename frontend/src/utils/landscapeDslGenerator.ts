@@ -46,7 +46,7 @@ function relationLine(
  * Collecte les relations uniques de tous les flows (steps forward uniquement).
  * Implémenté localement pour éviter la dépendance circulaire avec sequenceDslGenerator.
  */
-function collectFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComponentId: string }> {
+export function collectFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComponentId: string }> {
   const seen = new Set<string>()
   const result: Array<{ fromComponentId: string; toComponentId: string }> = []
   for (const flow of dag.applicationFlows) {
@@ -63,8 +63,7 @@ function collectFlowRelations(dag: Dag): Array<{ fromComponentId: string; toComp
 // ─── Public building blocks ───────────────────────────────────────────────────
 
 /**
- * Toutes les relations effectives du landscape : manuelles + induites des flows si autoSync.
- * Dédupliquées par paire (fromComponentId, toComponentId).
+ * Toutes les relations effectives du landscape (dag.relations), dédupliquées par paire.
  */
 export function allEffectiveLandscapeRelations(
   dag: Dag,
@@ -79,16 +78,6 @@ export function allEffectiveLandscapeRelations(
     if (seen.has(key)) continue
     seen.add(key)
     result.push({ fromComponentId: r.fromComponentId, toComponentId: r.toComponentId, label: r.label, protocol: r.protocol })
-  }
-
-  if (dag.landscape.autoSync) {
-    for (const r of collectFlowRelations(dag)) {
-      if (!valid.has(r.fromComponentId) || !valid.has(r.toComponentId)) continue
-      const key = `${r.fromComponentId}->${r.toComponentId}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      result.push({ fromComponentId: r.fromComponentId, toComponentId: r.toComponentId })
-    }
   }
 
   return result
@@ -136,35 +125,12 @@ export function generateManualRelationsBody(dag: Dag): string {
     .join('\n')
 }
 
-/**
- * Relations issues des flows, dédupliquées contre dag.relations
- * (zone read-only basse de l'éditeur DSL, affichée uniquement si autoSync activé)
- */
-export function generateAutoSyncRelationsBody(dag: Dag): string {
-  const valid      = validComponentIds(dag)
-  const manualKeys = new Set(dag.relations.map((r) => `${r.fromComponentId}->${r.toComponentId}`))
-
-  return collectFlowRelations(dag)
-    .filter((r) => valid.has(r.fromComponentId) && valid.has(r.toComponentId))
-    .filter((r) => !manualKeys.has(`${r.fromComponentId}->${r.toComponentId}`))
-    .map((r) => relationLine(dag, r.fromComponentId, r.toComponentId))
-    .join('\n')
-}
-
-/**
- * DSL complet pour Mermaid, PPTX, draw.io.
- * Lit toutes les options depuis dag.landscape (useElk, autoSync).
- */
+/** DSL complet pour Mermaid, PPTX, draw.io. */
 export function generateLandscapeDsl(dag: Dag): string {
   const parts: string[] = [generateLandscapeHeader(dag), generateComponentsBody(dag, false, true)]
 
   const manual = generateManualRelationsBody(dag)
   if (manual) parts.push(manual)
-
-  if (dag.landscape.autoSync) {
-    const auto = generateAutoSyncRelationsBody(dag)
-    if (auto) parts.push(auto)
-  }
 
   return parts.join('\n')
 }

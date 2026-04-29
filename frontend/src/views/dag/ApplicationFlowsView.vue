@@ -173,11 +173,8 @@ const validationStatus = computed(() => {
   return 'valid'
 })
 
-// Relations used in this flow but absent from the landscape
-// When autosync is on, flow relations are already included in the diagram — no warning needed
 const missingRelations = computed(() => {
   if (!dag.value || !selectedFlow.value) return []
-  if (dag.value.landscape.autoSync) return []
   return findMissingLandscapeRelations(selectedFlow.value, dag.value)
 })
 
@@ -185,8 +182,6 @@ const unknownParticipants = computed(() => {
   if (!dag.value || !dslEdit.value || !editorDsl.value.trim()) return []
   return findUnknownParticipants(editorDsl.value, dag.value)
 })
-
-const landscapeAutoSync = computed(() => dag.value?.landscape.autoSync === true)
 
 function addToLandscape() {
   if (!dag.value) return
@@ -422,16 +417,8 @@ const dslReadOnlyHeaderForEditor = computed(() => {
             </div>
           </template>
 
-          <!-- Auto-sync mode: all relations are live in landscape -->
-          <div v-if="landscapeAutoSync && dag.applicationFlows.length > 0 && (dslEdit ? !syntaxError && unknownParticipants.length === 0 : true)" class="issue-list synced-list">
-            <div class="issue-item">
-              <i class="pi pi-check-circle" />
-              <span>Relations synced with landscape (auto-sync mode)</span>
-            </div>
-          </div>
-
           <!-- Missing relations warning (guided + DSL mode) -->
-          <div v-else-if="!landscapeAutoSync && missingRelations.length > 0 && unknownParticipants.length === 0" class="issue-list warning-list">
+          <div v-if="missingRelations.length > 0 && unknownParticipants.length === 0" class="issue-list warning-list">
             <div class="warning-header">
               <span><i class="pi pi-exclamation-triangle" /> {{ missingRelations.length }} relation(s) not in landscape</span>
               <Button

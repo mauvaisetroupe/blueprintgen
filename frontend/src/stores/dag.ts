@@ -154,7 +154,6 @@ export const useDagStore = defineStore(
         updatedAt: now(),
         landscape: {
           useElk:           data.landscape?.useElk,
-          autoSync:         data.landscape?.autoSync,
           categorySubgraphs: data.landscape?.categorySubgraphs,
         },
         // Champs ajoutés dans les versions récentes — migration défensive
@@ -875,13 +874,6 @@ export const useDagStore = defineStore(
       dag.updatedAt = now()
     }
 
-    function setLandscapeAutoSync(dagId: string, autoSync: boolean) {
-      const dag = getDag(dagId)
-      if (!dag) return
-      dag.landscape.autoSync = autoSync
-      dag.updatedAt = now()
-    }
-
     function setTechnicalCategorySubgraph(dagId: string, categoryId: string, show: boolean) {
       const dag = getDag(dagId)
       if (!dag) return
@@ -898,20 +890,57 @@ export const useDagStore = defineStore(
     }
 
 
-    /** Remplace toutes les relations manuelles du landscape par celles parsées depuis l'éditeur DSL. */
+    /** Remplace toutes les relations manuelles du landscape par celles parsées depuis l'éditeur DSL.
+     *  Préserve le flag imported si la relation existe déjà (même paire de composants). */
     function replaceManualRelations(
       dagId: string,
       relations: Array<{ fromComponentId: string; toComponentId: string; label?: string }>,
     ) {
       const dag = getDag(dagId)
       if (!dag) return
-      dag.relations = relations.map((r) => ({
-        id:              generateId(),
-        fromComponentId: r.fromComponentId,
-        toComponentId:   r.toComponentId,
-        label:           r.label,
-        source:          'manual' as const,
-      }))
+      dag.relations = relations.map((r) => {
+        const existing = dag.relations.find(
+          (e) => e.fromComponentId === r.fromComponentId && e.toComponentId === r.toComponentId,
+        )
+        return {
+          id:              existing?.id ?? generateId(),
+          fromComponentId: r.fromComponentId,
+          toComponentId:   r.toComponentId,
+          label:           r.label,
+          source:          'manual' as const,
+          imported:        existing?.imported,
+        }
+      })
+      dag.updatedAt = now()
+    }
+
+    function importLandscapeRelationsFromFlows(
+      dagId: string,
+      selections: Array<{ fromComponentId: string; toComponentId: string }>,
+    ) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      for (const sel of selections) {
+        const alreadyExists = dag.relations.some(
+          (r) => r.fromComponentId === sel.fromComponentId && r.toComponentId === sel.toComponentId,
+        )
+        if (!alreadyExists) {
+          dag.relations.push({
+            id:              generateId(),
+            fromComponentId: sel.fromComponentId,
+            toComponentId:   sel.toComponentId,
+            source:          'manual' as const,
+            imported:        true,
+          })
+        }
+      }
+      dag.updatedAt = now()
+    }
+
+    function cleanImportedLandscapeRelations(dagId: string) {
+      const dag = getDag(dagId)
+      if (!dag) return
+      dag.relations = dag.relations.filter((r) => !r.imported)
       dag.updatedAt = now()
     }
 
@@ -937,9 +966,10 @@ export const useDagStore = defineStore(
       deleteRelation,
       syncFromDsl,
       setLandscapeUseElk,
-      setLandscapeAutoSync,
       setLandscapeCategorySubgraph,
       replaceManualRelations,
+      importLandscapeRelationsFromFlows,
+      cleanImportedLandscapeRelations,
       saveFlowSteps,
       addFlow,
       updateFlow,

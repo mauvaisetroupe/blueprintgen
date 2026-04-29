@@ -7,7 +7,6 @@ import {
   generateLandscapeHeader,
   generateComponentsBody,
   generateManualRelationsBody,
-  generateAutoSyncRelationsBody,
   parseRelationsBody,
   toNodeId,
 } from '@/utils/landscapeDslGenerator'
@@ -24,6 +23,7 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import RelationSpreadsheet from '@/components/dag/RelationSpreadsheet.vue'
 import DslEditor from '@/components/DslEditor.vue'
+import ImportLandscapeRelationsDialog from '@/components/dag/ImportLandscapeRelationsDialog.vue'
 
 const route = useRoute()
 const store = useDagStore()
@@ -36,11 +36,24 @@ watch(useElk, (val) => {
   if (dag.value) store.setLandscapeUseElk(dag.value.id, val)
 })
 
-// ── Auto-sync toggle ──────────────────────────────────────────────────────────
-const autoSync = ref(dag.value?.landscape.autoSync ?? false)
-watch(autoSync, (val) => {
-  if (dag.value) store.setLandscapeAutoSync(dag.value.id, val)
-})
+// ── Import from flows dialog ──────────────────────────────────────────────────
+const importDialogVisible = ref(false)
+
+const hasImportedRelations = computed(() =>
+  dag.value?.relations.some((r) => r.imported) ?? false,
+)
+
+function cleanImportedRelations() {
+  if (!dag.value) return
+  store.cleanImportedLandscapeRelations(dag.value.id)
+  if (dslEdit.value) localRelationsBody.value = generateManualRelationsBody(dag.value)
+}
+
+function onImported() {
+  if (!dag.value || !dslEdit.value) return
+  localRelationsBody.value = generateManualRelationsBody(dag.value)
+  runValidation()
+}
 
 // ── Mode : guided | manual — injecté depuis DagDetailLayout ──────────────────
 const dslEdit = inject<Ref<boolean>>('dslEdit')!
@@ -70,16 +83,9 @@ const dslReadOnlyHeaderForEditor = computed(() => {
     ? `${toNodeId(dag.value.components[0].name)} --> ${toNodeId(dag.value.components[1].name)}`
     : "internet_user --> ordering_service"
 
-  lines.push("  %% Tip: Use AUTOSYNC to import relationships from sequence diagrams.");
+  lines.push("  %% Tip: Use 'Import from flows' to import relationships from sequence diagrams.");
   lines.push(`  %% Add links here (e.g., ${example})`)
   return lines.join('\n')
-})
-
-// Footer read-only = relations auto-sync (si toggle activé)
-const dslReadOnlyFooter = computed(() => {
-  if (!dag.value || !autoSync.value) return ''
-  const body = generateAutoSyncRelationsBody(dag.value)
-  return body || ''
 })
 
 watch(dslEdit, (mode) => {
@@ -99,7 +105,7 @@ watch(dslEdit, (mode) => {
 
 // ── DSL complet pour le rendu Mermaid ─────────────────────────────────────────
 // En mode manuel : construit depuis les parties locales pour prévisualisation instantanée
-// En mode guidé  : généré depuis le modèle (dag.relations + autoSync)
+// En mode guidé  : généré depuis le modèle (dag.relations)
 const activeDsl = computed(() => {
   if (!dag.value) return ''
   if (dslEdit.value) {
@@ -107,7 +113,6 @@ const activeDsl = computed(() => {
     if (dslFrontmatter.value) parts.push(dslFrontmatter.value)
     parts.push(generateComponentsBody(dag.value, false, true))
     if (localRelationsBody.value.trim()) parts.push(localRelationsBody.value)
-    if (dslReadOnlyFooter.value.trim())  parts.push(dslReadOnlyFooter.value)
     return parts.join('\n')
   }
   return generateLandscapeDsl(dag.value)
@@ -251,10 +256,22 @@ async function copyMermaid() {
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <div class="elk-toggle">
-        <ToggleSwitch v-model="autoSync" input-id="autosync-switch" />
-        <label for="autosync-switch">Include flow relations</label>
-      </div>
+      <Button
+        v-if="hasImportedRelations"
+        label="Clean imported"
+        icon="pi pi-trash"
+        size="small"
+        severity="danger"
+        text
+        @click="cleanImportedRelations"
+      />
+      <Button
+        label="Import from flows"
+        icon="pi pi-download"
+        size="small"
+        severity="secondary"
+        @click="importDialogVisible = true"
+      />
 
       <!-- Validation status (mode manuel) -->
       <div v-if="dslEdit" class="validation-status">
@@ -371,6 +388,15 @@ async function copyMermaid() {
         <MermaidDiagram :code="activeDsl" />
       </SplitterPanel>
     </Splitter>
+
+    <!-- Import from flows dialog -->
+    <ImportLandscapeRelationsDialog
+      v-if="dag"
+      :dag-id="dag.id"
+      :visible="importDialogVisible"
+      @update:visible="importDialogVisible = $event"
+      @imported="onImported"
+    />
 
   </div>
 </template>

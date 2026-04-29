@@ -32,7 +32,6 @@ export interface Component {
 
 export interface Landscape {
   useElk?: boolean
-  autoSync?: boolean               // inclure les relations des flows dans le landscape
   categorySubgraphs?: Record<string, boolean>  // override de showSubgraph par catégorie (clé = ID stable)
 }
 
@@ -47,6 +46,7 @@ export interface Relation {
   label?: string
   protocol?: string   // protocole technique (HTTPS, REST, AMQP…) — distinct du label fonctionnel
   source?: 'manual'
+  imported?: boolean  // importé depuis les flows via le dialog d'import
 }
 
 // --- Technical landscape section ---
