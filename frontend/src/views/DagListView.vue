@@ -4,6 +4,7 @@ import { useDagStore } from '@/stores/dag'
 import { useRouter } from 'vue-router'
 import { parseImportDsl } from '@/utils/importParser'
 import { parseDsl } from '@/utils/dslParser'
+import { importDagFromYaml } from '@/utils/dagYamlImporter'
 import type { Dag } from '@/types/dag'
 import { allCategories } from '@/types/dag'
 import Button from 'primevue/button'
@@ -57,11 +58,17 @@ async function handleOpenFile(e: Event) {
   if (!file) return
   try {
     const text = await file.text()
-    const data = JSON.parse(text) as Dag
-    if (!data.name || !Array.isArray(data.components)) {
-      throw new Error('Fichier JSON invalide — ce n\'est pas un DAG blueprintgen.')
+    let dagData: Dag
+    if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
+      dagData = importDagFromYaml(text)
+    } else {
+      const data = JSON.parse(text) as Dag
+      if (!data.name || !Array.isArray(data.components)) {
+        throw new Error('Fichier JSON invalide — ce n\'est pas un DAG blueprintgen.')
+      }
+      dagData = data
     }
-    const dag = store.openDag(data)
+    const dag = store.openDag(dagData)
     router.push(`/dag/${dag.id}`)
   } catch (err) {
     openError.value = err instanceof Error ? err.message : 'Erreur de lecture du fichier.'
@@ -121,7 +128,7 @@ function executeImport() {
         <Button label="New DAG" icon="pi pi-plus" @click="router.push('/dag/new')" />
       </div>
       <!-- Input file caché pour Open -->
-      <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="handleOpenFile" />
+      <input ref="jsonFileInput" type="file" accept=".json,.yaml,.yml" style="display:none" @change="handleOpenFile" />
       <small v-if="openError" class="open-error">{{ openError }}</small>
     </div>
 
