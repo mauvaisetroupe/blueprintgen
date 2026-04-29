@@ -3,10 +3,12 @@ import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
 import { exportToPptx } from '@/utils/pptxExporter'
+import { downloadDagAsYaml } from '@/utils/dagYamlExporter'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
 import Button from 'primevue/button'
+import Menu from 'primevue/menu'
 import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { storeToRefs } from 'pinia'
@@ -69,17 +71,28 @@ async function handleExport() {
   }
 }
 
-function saveLocally() {
-  if (!dag.value) return
-  const json = JSON.stringify(dag.value, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
+const saveMenu = ref<InstanceType<typeof Menu>>()
+const saveMenuItems = computed(() => [
+  {
+    label: 'Save as JSON',
+    icon: 'pi pi-save',
+    command: () => {
+      if (!dag.value) return
+      const blob = new Blob([JSON.stringify(dag.value, null, 2)], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `${dag.value.name.replace(/[^\w\s-]/g, '').trim()}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    },
+  },
+  {
+    label: 'Export DAG (.yaml)',
+    icon: 'pi pi-file-edit',
+    command: () => { if (dag.value) downloadDagAsYaml(dag.value) },
+  },
+])
 </script>
 
 <template>
@@ -111,11 +124,10 @@ function saveLocally() {
             icon="pi pi-save"
             size="small"
             severity="secondary"
-            text
-            title="Save locally"
-            label="Save locally"
-            @click="saveLocally"
+            label="Save / Export"
+            @click="saveMenu?.toggle($event)"
           />
+          <Menu ref="saveMenu" :model="saveMenuItems" popup />
           <Button
             label="Export PPTX"
             icon="pi pi-file-export"
