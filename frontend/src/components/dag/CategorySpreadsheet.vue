@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick, computed, onMounted } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { Category, Component } from '@/types/dag'
 import { DEFAULT_CATEGORY_NAMES, allCategories } from '@/types/dag'
@@ -85,9 +85,9 @@ function saveName() {
 }
 
 // --- Cell refs for focus management ---
-const cellRefs = ref<HTMLInputElement[][]>([])
+const cellRefs = ref<(HTMLInputElement | HTMLTextAreaElement)[][]>([])
 
-function setCellRef(el: HTMLInputElement | null, rowIndex: number, colIndex: number) {
+function setCellRef(el: HTMLInputElement | HTMLTextAreaElement | null, rowIndex: number, colIndex: number) {
   if (!cellRefs.value[rowIndex]) cellRefs.value[rowIndex] = []
   if (el) cellRefs.value[rowIndex][colIndex] = el
 }
@@ -97,6 +97,19 @@ async function focusCell(rowIndex: number, colIndex: number) {
   cellRefs.value[rowIndex]?.[colIndex]?.focus()
 }
 
+function autoResize(el: HTMLTextAreaElement) {
+  el.style.height = 'auto'
+  el.style.height = el.scrollHeight + 'px'
+}
+
+onMounted(async () => {
+  await nextTick()
+  for (const row of cellRefs.value) {
+    const ta = row?.[1]
+    if (ta instanceof HTMLTextAreaElement) autoResize(ta)
+  }
+})
+
 // --- Inline updates ---
 function updateName(component: Component, value: string) {
   updateComp(component.id, { name: value })
@@ -104,6 +117,12 @@ function updateName(component: Component, value: string) {
 
 function updateDescription(component: Component, value: string) {
   updateComp(component.id, { description: value })
+}
+
+function onDescriptionInput(component: Component, e: Event) {
+  const el = e.target as HTMLTextAreaElement
+  autoResize(el)
+  updateDescription(component, el.value)
 }
 
 // --- Add row ---
@@ -125,7 +144,7 @@ function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
     } else {
       addRow(rowIndex + 1)
     }
-  } else if (e.key === 'Enter') {
+  } else if (e.key === 'Enter' && colIndex !== 1) {
     e.preventDefault()
     if (rowIndex + 1 < props.components.length) {
       focusCell(rowIndex + 1, 0)
@@ -147,7 +166,9 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
   const text = e.clipboardData?.getData('text/plain') ?? ''
 
   // Single value paste — let the browser handle it normally
+  // For description (textarea), plain multiline text (no tabs) is handled natively
   if (!text.includes('\t') && !text.includes('\n')) return
+  if (colIndex === 1 && !text.includes('\t')) return
 
   e.preventDefault()
 
@@ -221,12 +242,13 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
             />
           </td>
           <td>
-            <input
-              :ref="(el) => setCellRef(el as HTMLInputElement, rowIndex, 1)"
+            <textarea
+              :ref="(el) => setCellRef(el as HTMLTextAreaElement, rowIndex, 1)"
               class="cell-input"
+              rows="1"
               :value="component.description"
               placeholder="Description"
-              @input="updateDescription(component, ($event.target as HTMLInputElement).value)"
+              @input="onDescriptionInput(component, $event)"
               @keydown="onKeydown($event, rowIndex, 1)"
               @paste="onPaste($event, rowIndex, 1)"
             />
@@ -330,6 +352,7 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
 .sheet td {
   padding: 2px 4px;
   border-bottom: 1px solid var(--p-content-border-color);
+  vertical-align: top;
 }
 
 .sheet tbody tr:last-child td {
@@ -346,6 +369,10 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
   color: inherit;
   outline: none;
   border-radius: 4px;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.4;
+  display: block;
 }
 
 .cell-input:focus {

@@ -262,7 +262,7 @@ export function importDagFromYaml(content: string): Dag {
   const minimalDag = { components } as Dag
 
   const applicationFlows: ApplicationFlow[] = flowsRaw
-    .filter((f) => f.name?.trim())
+    .filter((f): f is Record<string, string> & { name: string } => !!f.name?.trim())
     .map((f) => {
       const diagram = (f.diagram ?? '').trim()
       // Strip "sequenceDiagram" header line to get the body
