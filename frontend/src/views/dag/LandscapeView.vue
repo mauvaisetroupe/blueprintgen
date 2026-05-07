@@ -219,6 +219,7 @@ const exportMenuItems = ref([
   },
 ])
 
+
 async function exportSvg(pptxMode: boolean) {
   if (!dag.value) return
   const dsl = pptxMode ? injectHtmlLabelsFalse(activeDsl.value) : activeDsl.value

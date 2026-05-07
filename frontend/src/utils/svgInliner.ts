@@ -96,9 +96,9 @@ export function styleCircledDigits(
   const svg = div.querySelector('svg')
   if (!svg) return svgString
 
-  const selectors = ['text.messageText', 'g.edgeLabel text']
-
-  for (const selector of selectors) {
+  // Séquence + activité : remplace le contenu du <text> entier (labels mono-ligne)
+  const arrowSelectors = ['text.messageText', 'g.edgeLabel text']
+  for (const selector of arrowSelectors) {
     svg.querySelectorAll<SVGTextElement>(selector).forEach((el) => {
       const text = el.textContent ?? ''
       const match = text.match(CIRCLED_DIGIT_RE)
@@ -127,6 +127,55 @@ export function styleCircledDigits(
       if (edgeLabel) svg.appendChild(edgeLabel)
     })
   }
+
+  // Nœuds flowchart layout SVG (dagre) : cible les <text> avec chiffre cerclé.
+  // Cas rare si htmlLabels:false est respecté (non ELK).
+  svg.querySelectorAll<SVGTextElement>('text').forEach((el) => {
+    if (el.matches('.messageText')) return
+    if (el.closest('g.edgeLabel')) return
+
+    const firstTspan = el.querySelector('tspan')
+    const textToCheck = firstTspan ? (firstTspan.textContent ?? '') : (el.textContent ?? '')
+    const match = textToCheck.match(CIRCLED_DIGIT_RE)
+    if (!match) return
+
+    const circle = (match[1] ?? '').trimEnd()
+    const rest   = (match[2] ?? '').trim()
+
+    el.textContent = ''
+
+    const ns = 'http://www.w3.org/2000/svg'
+    const tCircle = document.createElementNS(ns, 'tspan')
+    tCircle.setAttribute('style', `fill:#${color}!important;font-size:${fontSize}px!important;font-weight:bold!important`)
+    tCircle.textContent = circle + ' '
+
+    const tRest = document.createElementNS(ns, 'tspan')
+    tRest.textContent = rest
+
+    el.appendChild(tCircle)
+    el.appendChild(tRest)
+  })
+
+  // Nœuds flowchart layout ELK : Mermaid v11 + ELK génère du HTML dans <foreignObject>
+  // même quand htmlLabels:false est configuré — ELK ignore ce paramètre.
+  // Structure réelle : <foreignObject><div><span class="nodeLabel"><p>① Nom</p></span></div></foreignObject>
+  // On cible le <p> (ou le span si pas de <p>) et on y injecte un <span> HTML coloré.
+  // On utilise `color` (CSS HTML) et non `fill` (SVG) car on est dans un contexte HTML.
+  svg.querySelectorAll<Element>('foreignObject .nodeLabel p, foreignObject .nodeLabel').forEach((el) => {
+    // Évite de traiter le span .nodeLabel si son <p> enfant a déjà été traité
+    if (el.tagName === 'SPAN' && el.querySelector('p')) return
+
+    const text = el.textContent ?? ''
+    const match = text.match(CIRCLED_DIGIT_RE)
+    if (!match) return
+
+    const circle = (match[1] ?? '').trimEnd()
+    const rest   = (match[2] ?? '').trim()
+
+    el.innerHTML =
+      `<span style="color:#${color};font-size:${fontSize}px;font-weight:bold">${circle} </span>` +
+      rest
+  })
 
   return div.querySelector('svg')?.outerHTML ?? svgString
 }

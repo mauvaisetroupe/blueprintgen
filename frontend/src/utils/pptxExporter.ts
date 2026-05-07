@@ -2,7 +2,7 @@ import PptxGenJS from 'pptxgenjs'
 import mermaid from 'mermaid'
 import type { Dag, ApplicationFlow } from '@/types/dag'
 import { allCategories } from '@/types/dag'
-import { generateLandscapeDsl } from './landscapeDslGenerator'
+import { generateNumberedLandscapeDsl } from './landscapeDslGenerator'
 import { generateTechnicalLandscapeDsl } from './technicalLandscapeDslGenerator'
 import { buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps } from './sequenceDslGenerator'
 import { inlineSvgStyles, injectHtmlLabelsFalse, styleCircledDigits } from './svgInliner'
@@ -168,21 +168,58 @@ function addTitleBar(slide: PptxGenJS.Slide, title: string) {
   })
 }
 
-function resolveLandscapeDsl(dag: Dag): string {
-  return generateLandscapeDsl(dag)
-}
-
 async function addLandscapeSlide(pptx: PptxGenJS, dag: Dag) {
   const slide = pptx.addSlide()
   addTitleBar(slide, dag.name + ' — Application Landscape')
 
-  const dsl = resolveLandscapeDsl(dag)
-  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(dsl)
+  const { dsl, numbered } = generateNumberedLandscapeDsl(dag)
 
-  const anchorX = 0.2,  anchorY = 0.6
-  const availW  = SLIDE_W - 0.4, availH = SLIDE_H - anchorY - 0.1
-  const pos = containRect(naturalW, naturalH, anchorX, anchorY, availW, availH)
+  // ── Layout : 60 % diagramme / 40 % légende ──────────────────────────────
+  const PAD    = 0.3
+  const SPLIT  = 0.60
+  const leftX  = PAD
+  const leftW  = SLIDE_W * SPLIT - PAD
+  const rightX = SLIDE_W * SPLIT + PAD * 0.5
+  const rightW = SLIDE_W - rightX - PAD
+
+  const headerY  = 0.65
+  const consumed = addSectionHeader(slide, 'Application Landscape',    leftX,  headerY, leftW)
+                   addSectionHeader(slide, 'Component Descriptions',   rightX, headerY, rightW)
+  const contentY = headerY + consumed + 0.12
+  const contentH = SLIDE_H - contentY - 0.15
+
+  // ── Diagramme avec chiffres cerclés ──────────────────────────────────────
+  const { dataUrl, naturalW, naturalH } = await renderMermaidToPng(dsl, true, 16)
+  const pos = containRect(naturalW, naturalH, leftX, contentY, leftW, contentH, 'top')
   slide.addImage({ data: dataUrl, ...pos })
+
+  // ── Panneau légende : ① Nom — Description ────────────────────────────────
+  const rows: PptxGenJS.TextProps[] = []
+  for (const comp of numbered) {
+    rows.push({
+      text: `​${comp.number} `,
+      options: { bold: true, color: COLOR_ACCENT, fontSize: 13 },
+    })
+    rows.push({
+      text: comp.name,
+      options: { bold: true, color: '1A1A1A', fontSize: 11 },
+    })
+    if (comp.description.trim()) {
+      rows.push({
+        text: ' — ' + comp.description + '\n',
+        options: { bold: false, color: '555555', fontSize: 10 },
+      })
+    } else {
+      rows.push({ text: '\n', options: { fontSize: 10 } })
+    }
+  }
+
+  if (rows.length > 0) {
+    slide.addText(rows, {
+      x: rightX, y: contentY, w: rightW, h: contentH,
+      valign: 'top', wrap: true, lineSpacingMultiple: 1.35,
+    })
+  }
 }
 
 // Unicode circled digits ①–⑳

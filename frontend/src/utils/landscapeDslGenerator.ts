@@ -135,6 +135,66 @@ export function generateLandscapeDsl(dag: Dag): string {
   return parts.join('\n')
 }
 
+export interface NumberedComponent {
+  number: string
+  name: string
+  description: string
+}
+
+const CIRCLED_DIGITS_LANDSCAPE = [
+  '①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
+  '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳',
+]
+
+function nodeLabelNumbered(name: string, num: string, shape?: NodeShape): string {
+  switch (shape) {
+    case 'cylinder': return `[("${num} ${name}")]`
+    case 'rounded':  return `(["${num} ${name}"])`
+    default:         return `["${num} ${name}"]`
+  }
+}
+
+/**
+ * Génère le DSL du landscape avec un chiffre cerclé dans chaque label de nœud,
+ * et retourne la liste ordonnée des composants numérotés pour le panneau légende PPTX.
+ */
+export function generateNumberedLandscapeDsl(dag: Dag): { dsl: string; numbered: NumberedComponent[] } {
+  const sortedCategories = allCategories(dag).sort((a, b) => a.order - b.order)
+  const numbered: NumberedComponent[] = []
+  const numMap = new Map<string, string>()
+
+  let idx = 0
+  for (const category of sortedCategories) {
+    const comps = dag.components.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
+    for (const comp of comps) {
+      const num = CIRCLED_DIGITS_LANDSCAPE[idx++] ?? `${idx}.`
+      numMap.set(comp.id, num)
+      numbered.push({ number: num, name: comp.name, description: comp.description ?? '' })
+    }
+  }
+
+  const lines: string[] = []
+  for (const category of sortedCategories) {
+    const comps = dag.components.filter((c) => c.categoryId === category.id && c.name.trim() !== '')
+    if (comps.length === 0) continue
+    const shape = DEFAULT_SHAPE_BY_NAME.get(category.name.toLowerCase())
+    const showSubgraph = dag.landscape?.categorySubgraphs?.[category.id] ?? category.showSubgraph
+    if (showSubgraph) {
+      lines.push(`  subgraph ${category.name}`)
+      for (const comp of comps) lines.push(`    ${toNodeId(comp.name)}${nodeLabelNumbered(comp.name, numMap.get(comp.id) ?? '', shape)}`)
+      lines.push('  end')
+    } else {
+      for (const comp of comps) lines.push(`    ${toNodeId(comp.name)}${nodeLabelNumbered(comp.name, numMap.get(comp.id) ?? '', shape)}`)
+    }
+  }
+
+  const manual = generateManualRelationsBody(dag)
+  const parts = [generateLandscapeHeader(dag), lines.join('\n')]
+  if (manual) parts.push(manual)
+
+  return { dsl: parts.join('\n'), numbered }
+}
+
 /**
  * Analyse les lignes de flèches DSL saisies par l'architecte et retourne
  * les relations correspondantes (fromComponentId / toComponentId / label).
