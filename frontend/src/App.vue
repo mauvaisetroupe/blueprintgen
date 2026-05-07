@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import Toast from 'primevue/toast'
+import Button from 'primevue/button'
 import HelpPanel from '@/components/HelpPanel.vue'
+import { useHelp } from '@/composables/useHelp'
+
+const { toggle: toggleHelp } = useHelp()
 
 const baseUrl = import.meta.env.BASE_URL
 const cfg = window.__APP_CONFIG__
@@ -37,6 +41,13 @@ const handleLogoError = (event: Event) => {
           <a v-if="homeUrl" :href="homeUrl" class="nav-link">Dashboards</a>
           <router-link v-else to="/" class="nav-link">Dashboards</router-link>
         </nav>
+        <Button
+          icon="pi pi-question-circle"
+          size="small"
+          severity="info"
+          aria-label="Help"
+          @click="toggleHelp"
+        />
       </div>
     </header>
     <main class="content">
@@ -65,6 +76,7 @@ const handleLogoError = (event: Event) => {
 .wrapper {
   display: flex;
   align-items: center;
+  gap: 1rem;
   height: 100%;
 }
 
