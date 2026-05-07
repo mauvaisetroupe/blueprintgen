@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { marked } from 'marked'
+import { marked, Renderer } from 'marked'
 import Drawer from 'primevue/drawer'
 import { useHelp } from '@/composables/useHelp'
 
 const { isOpen, lang, rawContent, setLang } = useHelp()
 
-const htmlContent = computed(() => marked.parse(rawContent.value) as string)
+const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+
+const renderer = new Renderer()
+renderer.link = ({ href, title, text }) => {
+  const resolvedHref = href.startsWith('/') ? `${base}${href}` : href
+  return `<a href="${resolvedHref}" target="_blank" rel="noopener"${title ? ` title="${title}"` : ''}>${text}</a>`
+}
+
+const htmlContent = computed(() => marked.parse(rawContent.value, { renderer }) as string)
 </script>
 
 <template>

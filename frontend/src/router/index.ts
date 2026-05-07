@@ -9,6 +9,11 @@ const router = createRouter({
       component: () => import('@/views/DagListView.vue'),
     },
     {
+      path: '/help/yaml-syntax',
+      name: 'help-yaml-syntax',
+      component: () => import('@/views/YamlSyntaxView.vue'),
+    },
+    {
       path: '/dag/new',
       name: 'dag-create',
       component: () => import('@/views/DagCreateView.vue'),
