@@ -41,6 +41,9 @@ const htmlContent = computed(() => marked.parse(rawContent.value) as string)
   font-weight: 600;
   margin: 1.25rem 0 0.4rem;
   color: var(--p-text-color);
+  display: inline-block;
+  border-bottom: 2px solid #42b883;
+  padding-bottom: 0.15rem;
 }
 
 :deep(h3) {
@@ -48,6 +51,8 @@ const htmlContent = computed(() => marked.parse(rawContent.value) as string)
   font-weight: 600;
   margin: 1rem 0 0.3rem;
   color: var(--p-text-muted-color);
+  border-left: 3px solid rgba(66, 184, 131, 0.5);
+  padding-left: 0.5rem;
 }
 
 :deep(p) {

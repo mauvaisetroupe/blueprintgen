@@ -14,10 +14,6 @@ Il ne vise pas l'exhaustivité (ce n'est pas du BPMN), mais la compréhension de
 3. Ajoutez des **étapes** : chaque étape est un message entre deux composants
 4. Renseignez la description du message et le protocole si nécessaire
 
-## Importer depuis le Landscape
-
-Le bouton **Import from Landscape** permet de pré-remplir les relations d'un flow à partir des relations déjà définies dans le landscape applicatif.
-
 ## Modes d'édition
 
 - **Mode guidé** — tableau d'étapes, ordre modifiable par glisser-déposer

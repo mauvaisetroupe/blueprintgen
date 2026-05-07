@@ -28,7 +28,11 @@ Cette vue génère et visualise le **diagramme de landscape applicatif** au form
 - **Export draw.io** — fichier `.drawio` éditable par l'architecte
 - **Open in draw.io** — ouverture directe dans draw.io via l'API embed
 
+## Import depuis les flows
+
+Le bouton **Import from Flows** permet de pré-remplir les relations du landscape à partir des étapes déjà définies dans les diagrammes de séquence. Cela évite de ressaisir manuellement des relations déjà modélisées dans les flows.
+
 ## Conseils
 
 - Commencez en mode guidé, passez en mode DSL pour les ajustements fins
-- Les relations définies ici peuvent être réutilisées dans les flows
+- Les relations définies ici servent de base pour construire les flows

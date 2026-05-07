@@ -1,29 +1,23 @@
 # Composants techniques
 
-Cette vue étend les composants applicatifs avec les informations nécessaires au **Technical Landscape**.
+Cette vue permet d'ajouter les **composants purement techniques** de l'architecture — ceux qui ne sont pas des composants applicatifs métier mais qui font partie de l'infrastructure technique.
 
-## Description technique
+## Exemples de composants techniques
 
-Pour chaque composant, vous pouvez renseigner :
+- **IAM / IdP** — Keycloak, Active Directory, Azure AD
+- **Proxy / API Gateway** — Kong, nginx, Azure APIM
+- **Monitoring / Observabilité** — Prometheus, Grafana, Datadog
+- **Logging centralisé** — Elasticsearch, Splunk
+- **Antivirus / Scanner** — composant de sécurité sur les flux fichiers
+- **WAF** — Web Application Firewall
 
-- **Technologie** — langage, framework, runtime (ex. : Spring Boot, React, Node.js)
-- **Contraintes techniques** — performances, licences, dépendances particulières
+## Différence avec les composants applicatifs
 
-## Zones réseau
+Les composants applicatifs (onglet **Components**) représentent les services métier de la solution (frontends, backends, bases de données…).
 
-Chaque composant peut être assigné à une ou plusieurs **zones réseau** (DMZ, intranet, cloud…).
-
-- Les zones structurent le Technical Landscape en groupes visuels
-- Un composant dans plusieurs zones est un cas avancé — à modéliser avec attention
-
-## Composants techniques purs
-
-Des composants non-applicatifs peuvent être ajoutés ici :
-logging centralisé, monitoring, SIEM, antivirus…
-
-Ces composants apparaissent dans la zone **Technical Services** du Technical Landscape.
+Les composants techniques ici sont des **briques d'infrastructure transverses**, non spécifiques au métier, qui apparaissent dans le **Technical Landscape** dans la zone *Technical Services*.
 
 ## Conseils
 
-- Remplissez cette vue après avoir stabilisé la liste des composants applicatifs
-- Les zones réseau définies ici servent de `subgraph` dans le Technical Landscape
+- N'ajoutez ici que les composants réellement présents dans l'architecture
+- Ces composants peuvent recevoir des flux entrants/sortants comme n'importe quel composant dans le Technical Landscape
