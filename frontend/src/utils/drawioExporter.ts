@@ -498,3 +498,45 @@ export async function exportFlowToDrawio(
   const xml = buildActivityFlowDrawioXml(dag, flow, nodeBounds, clusterBounds, subgraphCategoryIds)
   downloadDrawio(xml, `${dag.name}-${flow.name}`)
 }
+
+// ─── Mode C — Ouvrir dans draw.io via embed API (postMessage) ────────────────
+//
+// Protocole draw.io embed (proto=json) :
+//   1. On ouvre https://embed.diagrams.net/?embed=1&proto=json&spin=1 en popup
+//   2. draw.io envoie { event: 'init' } quand l'éditeur est prêt
+//   3. On répond { action: 'load', descriptor: { format: 'mermaid', data: dsl } }
+//   4. draw.io convertit le Mermaid en diagramme draw.io modifiable
+//
+// Avantage : cohérence visuelle garantie (même rendu que l'aperçu),
+// l'architecte finalise à la main sans étape manuelle Arrange › Insert › Mermaid.
+
+export function openInDrawio(mermaidDsl: string): void {
+  // draw.io ne comprend pas le frontmatter YAML (--- config: ... ---) de Mermaid :
+  // il tente de le parser comme du DSL et n'arrive pas à convertir en shapes.
+  const dsl = mermaidDsl.trimStart().startsWith('---')
+    ? mermaidDsl.replace(/^---[\s\S]*?---\s*\n?/, '').trimStart()
+    : mermaidDsl
+
+  const DRAWIO_URL = 'https://embed.diagrams.net/?embed=1&proto=json&spin=1&libraries=1'
+  const popup = window.open(DRAWIO_URL, '_blank', 'width=1400,height=900,menubar=no,toolbar=no')
+  if (!popup) {
+    alert('Le popup draw.io a été bloqué. Autorisez les popups pour ce site.')
+    return
+  }
+
+  function onMessage(event: MessageEvent) {
+    if (event.source !== popup) return
+    let msg: { event?: string }
+    try { msg = JSON.parse(event.data as string) } catch { return }
+
+    if (msg.event === 'init') {
+      popup.postMessage(
+        JSON.stringify({ action: 'load', descriptor: { format: 'mermaid', data: dsl } }),
+        '*',
+      )
+      window.removeEventListener('message', onMessage)
+    }
+  }
+
+  window.addEventListener('message', onMessage)
+}

@@ -13,7 +13,7 @@ import {
 import { allCategories } from '@/types/dag'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
-import { exportToDrawio } from '@/utils/drawioExporter'
+import { exportToDrawio, openInDrawio } from '@/utils/drawioExporter'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
 import Button from 'primevue/button'
@@ -206,15 +206,15 @@ const exportMenuItems = ref([
   {
     label: 'Mermaid',
     items: [
-      { label: 'Export DSL (.mmd)', icon: 'pi pi-code',         command: () => exportMermaid() },
-      { label: 'Copy to clipboard', icon: 'pi pi-copy',         command: () => copyMermaid()   },
-      { label: 'draw.io tip: Extras › Edit Diagram › paste', icon: 'pi pi-info-circle', disabled: true },
+      { label: 'Export DSL (.mmd)', icon: 'pi pi-code', command: () => exportMermaid() },
+      { label: 'Copy to clipboard', icon: 'pi pi-copy', command: () => copyMermaid()   },
     ],
   },
   {
     label: 'draw.io',
     items: [
-      { label: 'draw.io (.drawio)', icon: 'pi pi-share-alt', command: () => dag.value && exportToDrawio(dag.value) },
+      { label: 'Ouvrir dans draw.io (embed Mermaid)', icon: 'pi pi-external-link', command: () => openInDrawio(activeDsl.value) },
+      { label: 'draw.io (.drawio)',                   icon: 'pi pi-share-alt',     command: () => dag.value && exportToDrawio(dag.value) },
     ],
   },
 ])

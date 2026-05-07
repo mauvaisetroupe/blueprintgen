@@ -15,7 +15,7 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
-import { exportFlowToDrawio } from '@/utils/drawioExporter'
+import { exportFlowToDrawio, openInDrawio } from '@/utils/drawioExporter'
 
 const route = useRoute()
 const store = useDagStore()
@@ -233,33 +233,28 @@ const exportMenuItems = computed(() => {
       items: [
         { label: 'Export DSL (.mmd)', icon: 'pi pi-code', command: () => exportMermaid() },
         { label: 'Copy to clipboard', icon: 'pi pi-copy', command: () => copyMermaid() },
+      ],
+    },
+    {
+      label: 'draw.io',
+      items: [
         {
-          label: 'draw.io tip: Extras › Edit Diagram › paste',
-          icon: 'pi pi-info-circle',
-          disabled: true,
+          label: 'Open in draw.io (embed Mermaid)',
+          icon: 'pi pi-external-link',
+          command: () => openInDrawio(renderedDsl.value),
         },
       ],
     },
   ]
 
   if (diagramMode.value === 'activity') {
-    items.push({
-      label: 'draw.io',
-      items: [
-        {
-          label: 'draw.io (.drawio)',
-          icon: 'pi pi-share-alt',
-          command: () => {
-            if (!dag.value || !selectedFlow.value) return
-            exportFlowToDrawio(
-              dag.value,
-              selectedFlow.value,
-              activitySubgraphs.value,
-              showReturnArrows.value,
-            )
-          },
-        },
-      ],
+    ;(items.at(-1) as { items: object[] }).items.push({
+      label: 'draw.io (.drawio)',
+      icon: 'pi pi-share-alt',
+      command: () => {
+        if (!dag.value || !selectedFlow.value) return
+        exportFlowToDrawio(dag.value, selectedFlow.value, activitySubgraphs.value, showReturnArrows.value)
+      },
     })
   }
 
