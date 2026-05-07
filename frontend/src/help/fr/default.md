@@ -26,7 +26,3 @@ L'ensemble d'un DAG peut être exporté en un **fichier YAML lisible** (Save / E
 Cette approche convient aux architectes qui préfèrent travailler directement dans leur éditeur de texte ou IDE, gérer les révisions via Git, ou partager le DAG comme un artefact du projet au même titre que le code.
 
 Les deux approches sont complémentaires : on peut passer de l'une à l'autre sans perte d'information.
-
-## Export
-
-Utilisez **Save / Export** pour sauvegarder en JSON ou YAML, et **Export PPTX** pour générer le PowerPoint du DAG.

@@ -111,7 +111,10 @@ const saveMenuItems = computed(() => [
           </router-link>
         </Tab>
         <div class="header-actions">
-          <div class="elk-toggle">
+          <div
+            v-tooltip.bottom="isDslEditDisabled ? 'Not available on this tab' : dslEdit ? 'Editing Mermaid DSL directly — changes are reflected in the diagram' : 'Enable to edit the Mermaid DSL directly'"
+            class="elk-toggle"
+          >
             <ToggleSwitch
               v-model="dslEdit"
               :disabled="isDslEditDisabled"
@@ -121,6 +124,7 @@ const saveMenuItems = computed(() => [
             <label for="dsl-switch">DSL Edit</label>
           </div>
           <Button
+            v-tooltip.bottom="'Save as JSON or export as YAML'"
             icon="pi pi-save"
             size="small"
             severity="secondary"
@@ -129,6 +133,7 @@ const saveMenuItems = computed(() => [
           />
           <Menu ref="saveMenu" :model="saveMenuItems" popup />
           <Button
+            v-tooltip.bottom="'Generate PowerPoint DAG document'"
             label="Export PPTX"
             icon="pi pi-file-export"
             size="small"
