@@ -524,13 +524,15 @@ export function openInDrawio(mermaidDsl: string): void {
     return
   }
 
+  const openedPopup = popup
+
   function onMessage(event: MessageEvent) {
-    if (event.source !== popup) return
+    if (event.source !== openedPopup) return
     let msg: { event?: string }
     try { msg = JSON.parse(event.data as string) } catch { return }
 
     if (msg.event === 'init') {
-      popup.postMessage(
+      openedPopup.postMessage(
         JSON.stringify({ action: 'load', descriptor: { format: 'mermaid', data: dsl } }),
         '*',
       )
