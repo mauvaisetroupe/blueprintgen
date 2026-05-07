@@ -13,7 +13,7 @@ import {
 import { allCategories } from '@/types/dag'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
-import { exportToDrawio, openInDrawio } from '@/utils/drawioExporter'
+import { exportToDrawio, openInDrawio, downloadDrawioViaMermaid } from '@/utils/drawioExporter'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import mermaid from 'mermaid'
 import Button from 'primevue/button'
@@ -213,8 +213,9 @@ const exportMenuItems = ref([
   {
     label: 'draw.io',
     items: [
-      { label: 'Ouvrir dans draw.io (embed Mermaid)', icon: 'pi pi-external-link', command: () => openInDrawio(activeDsl.value) },
-      { label: 'draw.io (.drawio)',                   icon: 'pi pi-share-alt',     command: () => dag.value && exportToDrawio(dag.value) },
+      { label: 'Ouvrir dans draw.io (embed Mermaid)',    icon: 'pi pi-external-link', command: () => openInDrawio(activeDsl.value) },
+      { label: 'Télécharger .drawio (via Mermaid)',      icon: 'pi pi-download',      command: () => downloadDrawioViaMermaid(activeDsl.value, dag.value?.name ?? 'landscape') },
+      { label: 'draw.io (.drawio)',                      icon: 'pi pi-share-alt',     command: () => dag.value && exportToDrawio(dag.value) },
     ],
   },
 ])

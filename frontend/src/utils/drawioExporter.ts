@@ -540,3 +540,73 @@ export function openInDrawio(mermaidDsl: string): void {
 
   window.addEventListener('message', onMessage)
 }
+
+// ─── Mode D — Téléchargement headless via iframe caché ────────────────────────
+//
+// Protocole draw.io embed (proto=json) en mode silencieux :
+//   1. Iframe caché → embed.diagrams.net/?embed=1&proto=json
+//   2. { event: 'init' } → { action: 'load', descriptor: { format: 'mermaid', data: dsl } }
+//   3. { event: 'load' } → { action: 'export', format: 'xml' }
+//   4. { event: 'export' } → XML capturé → téléchargé en .drawio → iframe supprimé
+//
+// L'iframe doit être visible (pas display:none) car draw.io a besoin de rendre le diagramme.
+// On la positionne hors-écran avec position:fixed et left:-9999px.
+
+export async function downloadDrawioViaMermaid(mermaidDsl: string, filename: string): Promise<void> {
+  const dsl = mermaidDsl.trimStart().startsWith('---')
+    ? mermaidDsl.replace(/^---[\s\S]*?---\s*\n?/, '').trimStart()
+    : mermaidDsl
+
+  const DRAWIO_URL = 'https://embed.diagrams.net/?embed=1&proto=json&spin=1'
+
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1200px;height:800px;visibility:hidden'
+    iframe.src = DRAWIO_URL
+    document.body.appendChild(iframe)
+
+    const TIMEOUT_MS = 20000
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('draw.io headless export timeout'))
+    }, TIMEOUT_MS)
+
+    function cleanup() {
+      clearTimeout(timer)
+      window.removeEventListener('message', onMessage)
+      if (document.body.contains(iframe)) document.body.removeChild(iframe)
+    }
+
+    let loaded = false
+
+    function onMessage(event: MessageEvent) {
+      if (event.source !== iframe.contentWindow) return
+      let msg: { event?: string; xml?: string; data?: string; format?: string }
+      try { msg = JSON.parse(event.data as string) } catch { return }
+
+      if (msg.event === 'init') {
+        iframe.contentWindow!.postMessage(
+          JSON.stringify({ action: 'load', descriptor: { format: 'mermaid', data: dsl } }),
+          '*',
+        )
+      } else if (msg.event === 'load' && !loaded) {
+        loaded = true
+        iframe.contentWindow!.postMessage(
+          JSON.stringify({ action: 'export', format: 'xml' }),
+          '*',
+        )
+      } else if (msg.event === 'export') {
+        let xml = msg.xml ?? ''
+        // Certaines versions renvoient le XML en base64 dans msg.data
+        if (!xml && msg.data) {
+          try { xml = atob(msg.data) } catch { xml = msg.data }
+        }
+        cleanup()
+        downloadDrawio(xml, filename)
+        resolve()
+      }
+    }
+
+    window.addEventListener('message', onMessage)
+  })
+}

@@ -15,7 +15,7 @@ import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import mermaid from 'mermaid'
 import { inlineSvgStyles, injectHtmlLabelsFalse } from '@/utils/svgInliner'
-import { exportFlowToDrawio, openInDrawio } from '@/utils/drawioExporter'
+import { exportFlowToDrawio, openInDrawio, downloadDrawioViaMermaid } from '@/utils/drawioExporter'
 
 const route = useRoute()
 const store = useDagStore()
@@ -242,6 +242,11 @@ const exportMenuItems = computed(() => {
           label: 'Open in draw.io (embed Mermaid)',
           icon: 'pi pi-external-link',
           command: () => openInDrawio(renderedDsl.value),
+        },
+        {
+          label: 'Download .drawio (via Mermaid)',
+          icon: 'pi pi-download',
+          command: () => downloadDrawioViaMermaid(renderedDsl.value, selectedFlow.value?.name ?? 'flow'),
         },
       ],
     },
