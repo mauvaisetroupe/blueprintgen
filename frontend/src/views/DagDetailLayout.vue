@@ -12,10 +12,12 @@ import Menu from 'primevue/menu'
 import SelectButton from 'primevue/selectbutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { storeToRefs } from 'pinia'
+import { useHelp } from '@/composables/useHelp'
 
 const route = useRoute()
 const store = useDagStore()
 const { dslEditPreference } = storeToRefs(store)
+const { toggle: toggleHelp } = useHelp()
 
 const dag = computed(() => store.getDag(route.params.id as string))
 
@@ -135,6 +137,13 @@ const saveMenuItems = computed(() => [
             severity="secondary"
             :loading="exporting"
             @click="handleExport"
+          />
+          <Button
+            icon="pi pi-question-circle"
+            size="small"
+            severity="info"
+            aria-label="Aide"
+            @click="toggleHelp"
           />
         </div>
       </TabList>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import Toast from 'primevue/toast'
+import HelpPanel from '@/components/HelpPanel.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 const cfg = window.__APP_CONFIG__
@@ -42,6 +43,7 @@ const handleLogoError = (event: Event) => {
       <RouterView />
     </main>
     <Toast />
+    <HelpPanel />
   </div>
 </template>
 
