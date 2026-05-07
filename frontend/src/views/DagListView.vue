@@ -11,6 +11,7 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import Menu from 'primevue/menu'
 import ConfirmDialog from 'primevue/confirmdialog'
 import { useConfirm } from 'primevue/useconfirm'
 
@@ -44,14 +45,24 @@ function saveDag(dag: Dag, event: MouseEvent) {
   URL.revokeObjectURL(url)
 }
 
-// --- Open (JSON import) ---
-const openError   = ref<string | null>(null)
-const jsonFileInput = ref<HTMLInputElement>()
+// --- Open (JSON / YAML) ---
+const openError      = ref<string | null>(null)
+const jsonFileInput  = ref<HTMLInputElement>()
+const yamlFileInput  = ref<HTMLInputElement>()
+const openMenu       = ref<InstanceType<typeof Menu>>()
 
-function triggerOpen() {
-  openError.value = null
-  jsonFileInput.value?.click()
-}
+const openMenuItems = [
+  {
+    label: 'Open JSON (.json)',
+    icon: 'pi pi-file',
+    command: () => { openError.value = null; jsonFileInput.value?.click() },
+  },
+  {
+    label: 'Open YAML (.yaml)',
+    icon: 'pi pi-file-edit',
+    command: () => { openError.value = null; yamlFileInput.value?.click() },
+  },
+]
 
 async function handleOpenFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -123,12 +134,13 @@ function executeImport() {
     <div class="list-header">
       <h1>DAGs</h1>
       <div class="header-actions">
-        <Button label="Open" icon="pi pi-folder-open" severity="secondary" @click="triggerOpen" />
+        <Button label="Open" icon="pi pi-folder-open" severity="secondary" @click="openMenu?.toggle($event)" />
+        <Menu ref="openMenu" :model="openMenuItems" popup />
         <Button label="Import" icon="pi pi-upload" severity="secondary" @click="openImport" />
         <Button label="New DAG" icon="pi pi-plus" @click="router.push('/dag/new')" />
       </div>
-      <!-- Input file caché pour Open -->
-      <input ref="jsonFileInput" type="file" accept=".json,.yaml,.yml" style="display:none" @change="handleOpenFile" />
+      <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="handleOpenFile" />
+      <input ref="yamlFileInput" type="file" accept=".yaml,.yml" style="display:none" @change="handleOpenFile" />
       <small v-if="openError" class="open-error">{{ openError }}</small>
     </div>
 
