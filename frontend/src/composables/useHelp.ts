@@ -1,33 +1,34 @@
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 
-import componentsHelp from '../help/components.md?raw'
-import technicalComponentsHelp from '../help/technical-components.md?raw'
-import landscapeHelp from '../help/landscape.md?raw'
-import flowsHelp from '../help/flows.md?raw'
-import technicalHelp from '../help/technical.md?raw'
-import securityHelp from '../help/security.md?raw'
-import defaultHelp from '../help/default.md?raw'
+type Lang = 'fr' | 'en'
 
-const helpByRoute: Record<string, string> = {
-  'dag-overview': componentsHelp,
-  'dag-technical-components': technicalComponentsHelp,
-  'dag-landscape': landscapeHelp,
-  'dag-flows': flowsHelp,
-  'dag-technical-zones': technicalHelp,
-  'dag-technical-relations': technicalHelp,
-  'dag-security': securityHelp,
+const helpFr = import.meta.glob('../help/fr/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const helpEn = import.meta.glob('../help/en/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+
+const routeToFile: Record<string, string> = {
+  'dag-overview':              'components',
+  'dag-technical-components':  'technical-components',
+  'dag-landscape':             'landscape',
+  'dag-flows':                 'flows',
+  'dag-technical-zones':       'technical',
+  'dag-technical-relations':   'technical',
+  'dag-security':              'security',
 }
 
-// État singleton partagé entre les composants
+const savedLang = localStorage.getItem('helpLang') as Lang | null
 const isOpen = ref(false)
+const lang   = ref<Lang>(savedLang ?? 'fr')
 
 export function useHelp() {
   const route = useRoute()
 
   const rawContent = computed(() => {
     const routeName = route.name as string
-    return helpByRoute[routeName] ?? defaultHelp
+    const fileName  = routeToFile[routeName] ?? 'default'
+    const map       = lang.value === 'en' ? helpEn : helpFr
+    const key       = `../help/${lang.value}/${fileName}.md`
+    return map[key] ?? ''
   })
 
   function toggle() {
@@ -38,5 +39,10 @@ export function useHelp() {
     isOpen.value = false
   }
 
-  return { isOpen, rawContent, toggle, close }
+  function setLang(l: Lang) {
+    lang.value = l
+    localStorage.setItem('helpLang', l)
+  }
+
+  return { isOpen, lang, rawContent, toggle, close, setLang }
 }

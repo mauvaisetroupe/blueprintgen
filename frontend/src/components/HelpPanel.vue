@@ -4,23 +4,69 @@ import { marked } from 'marked'
 import Drawer from 'primevue/drawer'
 import { useHelp } from '@/composables/useHelp'
 
-const { isOpen, rawContent } = useHelp()
+const { isOpen, lang, rawContent, setLang } = useHelp()
 
 const htmlContent = computed(() => marked.parse(rawContent.value) as string)
 </script>
 
 <template>
-  <Drawer
-    v-model:visible="isOpen"
-    position="right"
-    header="Aide"
-    :style="{ width: '420px' }"
-  >
+  <Drawer v-model:visible="isOpen" position="right" :style="{ width: '420px' }">
+    <template #header>
+      <div class="help-header">
+        <span class="help-title">Help</span>
+        <div class="lang-toggle">
+          <button :class="['lang-btn', { active: lang === 'fr' }]" @click="setLang('fr')">FR</button>
+          <button :class="['lang-btn', { active: lang === 'en' }]" @click="setLang('en')">EN</button>
+        </div>
+      </div>
+    </template>
     <div class="help-body" v-html="htmlContent" />
   </Drawer>
 </template>
 
 <style scoped>
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.help-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.lang-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--p-surface-100, #f3f4f6);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.lang-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  color: var(--p-text-muted-color);
+  transition: background 0.15s, color 0.15s;
+}
+
+.lang-btn.active {
+  background: #42b883;
+  color: #fff;
+}
+
+.lang-btn:not(.active):hover {
+  background: var(--p-surface-200, #e5e7eb);
+  color: var(--p-text-color);
+}
+
 .help-body {
   padding: 0.25rem 0.5rem;
   line-height: 1.6;
