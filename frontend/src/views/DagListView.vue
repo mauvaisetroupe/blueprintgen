@@ -9,6 +9,7 @@ import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Menu from 'primevue/menu'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Dialog from 'primevue/dialog'
 import { useConfirm } from 'primevue/useconfirm'
 
 const store = useDagStore()
@@ -46,6 +47,8 @@ const openError      = ref<string | null>(null)
 const jsonFileInput  = ref<HTMLInputElement>()
 const yamlFileInput  = ref<HTMLInputElement>()
 const openMenu       = ref<InstanceType<typeof Menu>>()
+const pasteDialogVisible = ref(false)
+const pastedYamlContent = ref('')
 
 const openMenuItems = [
   {
@@ -57,6 +60,11 @@ const openMenuItems = [
     label: 'Open YAML (.yaml)',
     icon: 'pi pi-file-edit',
     command: () => { openError.value = null; yamlFileInput.value?.click() },
+  },
+  {
+    label: 'Paste YAML',
+    icon: 'pi pi-clipboard',
+    command: () => { openError.value = null; pasteDialogVisible.value = true },
   },
 ]
 
@@ -83,11 +91,32 @@ async function handleOpenFile(e: Event) {
   ;(e.target as HTMLInputElement).value = ''
 }
 
+function handlePasteYaml() {
+  try {
+    const dagData = importDagFromYaml(pastedYamlContent.value)
+    const dag = store.openDag(dagData)
+    router.push(`/dag/${dag.id}`)
+    pasteDialogVisible.value = false
+    pastedYamlContent.value = ''
+  } catch (err) {
+    openError.value = err instanceof Error ? err.message : 'Erreur de lecture du YAML collé.'
+  }
+}
+
 </script>
 
 <template>
   <div class="dag-list">
     <ConfirmDialog />
+    <Dialog v-model:visible="pasteDialogVisible" header="Paste YAML" modal :style="{ width: '60vw', maxWidth: '1200px' }">
+      <div style="max-width: 100%; overflow: auto;">
+        <textarea v-model="pastedYamlContent" placeholder="Paste your YAML content here..." style="width: 100%; height: 60vh; font-family: monospace; box-sizing: border-box; resize: vertical;"></textarea>
+      </div>
+      <div class="dialog-actions">
+        <Button label="Cancel" severity="secondary" @click="pasteDialogVisible = false" />
+        <Button label="Import" severity="primary" @click="handlePasteYaml" />
+      </div>
+    </Dialog>
 
     <div class="list-header">
       <h1>DAGs</h1>
@@ -159,6 +188,23 @@ async function handleOpenFile(e: Event) {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.5rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.dialog-actions textarea {
+  width: 100%;
+  padding: 0.5rem;
+  font-family: monospace;
+}
+
+:deep(.p-menuitem-icon) {
+  margin-right: 0.5rem;
 }
 
 .list-header h1 { margin: 0; }
