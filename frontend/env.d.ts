@@ -7,5 +7,5 @@ interface AppConfig {
 }
 
 interface Window {
-  __APP_CONFIG__: AppConfig
+  __APP_CONFIG__?: AppConfig
 }

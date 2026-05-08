@@ -8,7 +8,11 @@ import { useHelp } from '@/composables/useHelp'
 const { toggle: toggleHelp } = useHelp()
 
 const baseUrl = import.meta.env.BASE_URL
-const cfg = window.__APP_CONFIG__
+const cfg: AppConfig = window.__APP_CONFIG__ ?? {
+  appName: 'blueprintgen',
+  logoPath: null,
+  homeUrl: null,
+}
 const appName = cfg.appName
 const fallbackLogoSrc = `${baseUrl}logo/logo.png`
 const logoSrc = cfg.logoPath ?? fallbackLogoSrc
