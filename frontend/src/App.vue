@@ -18,6 +18,9 @@ const fallbackLogoSrc = `${baseUrl}logo/logo.png`
 const logoSrc = cfg.logoPath ?? fallbackLogoSrc
 const homeUrl = cfg.homeUrl  // null = router-link interne, sinon URL externe
 
+const gitCommit = __GIT_COMMIT__
+const buildTime = new Date(__BUILD_TIME__).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+
 const handleLogoError = (event: Event) => {
   const img = event.target as HTMLImageElement
   if (img.src === logoSrc) return // pas de logoPath configuré, pas de fallback possible
@@ -57,6 +60,9 @@ const handleLogoError = (event: Event) => {
     <main class="content">
       <RouterView />
     </main>
+    <footer class="app-footer">
+      commit: {{ gitCommit }} — built: {{ buildTime }}
+    </footer>
     <Toast />
     <HelpPanel />
   </div>
@@ -146,5 +152,14 @@ header {
 
 .content {
   flex: 1;
+}
+
+.app-footer {
+  text-align: center;
+  padding: 0.4rem;
+  font-size: 0.7rem;
+  color: #aaa;
+  background-color: #f8f8f8;
+  border-top: 1px solid #e0e0e0;
 }
 </style>

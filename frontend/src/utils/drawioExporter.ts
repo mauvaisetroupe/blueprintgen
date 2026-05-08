@@ -333,7 +333,7 @@ function buildDrawioXml(
  */
 function resolveDslForDrawio(dag: Dag): string {
   // generateLandscapeDsl lit dag.landscape.useElk, on crée un dag virtuel avec useElk: false
-  const dagForDrawio = { ...dag, landscape: { ...dag.landscape, useElk: false } }
+  const dagForDrawio = { ...dag, landscape: { ...dag.landscape, useElk: true } }
   return generateLandscapeDsl(dagForDrawio)
 }
 
@@ -349,6 +349,7 @@ function downloadDrawio(xml: string, baseName: string): void {
   URL.revokeObjectURL(url)
 }
 
+//TODO
 export async function exportToDrawio(dag: Dag): Promise<void> {
   const dsl = resolveDslForDrawio(dag)
   const id  = `drawio-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -472,6 +473,7 @@ function buildActivityFlowDrawioXml(
  * Exporte un flux activity vers draw.io.
  * Rend le DSL en Dagre (coordonnées stables) puis génère le XML mxGraphModel.
  */
+// TODO : 
 export async function exportFlowToDrawio(
   dag: Dag,
   flow: ApplicationFlow,

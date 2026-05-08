@@ -1,4 +1,6 @@
 import './assets/main.css'
+
+console.log(`[blueprintgen] commit: ${__GIT_COMMIT__} — built: ${__BUILD_TIME__}`)
 import 'primeicons/primeicons.css'
 
 import { createApp } from 'vue'
