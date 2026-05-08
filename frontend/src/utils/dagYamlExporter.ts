@@ -5,18 +5,14 @@ import { buildSequenceBodyFromSteps, parseFlowSteps } from '@/utils/sequenceDslG
 
 // ── YAML string helpers ───────────────────────────────────────────────────────
 
-// Returns a safe YAML plain scalar, or a double-quoted string if special chars are present.
 function yamlScalar(value: string): string {
   if (!value) return '""'
-  // Quote if the value contains chars that would break a YAML plain scalar
   if (/[:#\[\]{}&*!|>'"@`]/.test(value) || value.trim() !== value || value.startsWith('-')) {
     return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
   }
   return value
 }
 
-// Returns a YAML block scalar (`|`) for multi-line or free-text content.
-// indent = number of spaces prepended to each content line.
 function yamlBlock(value: string, indent: number): string {
   const pad = ' '.repeat(indent)
   const lines = value.trimEnd().split('\n')
@@ -24,97 +20,57 @@ function yamlBlock(value: string, indent: number): string {
   return `|\n${indented}`
 }
 
-// ── Landscape Mermaid (sans frontmatter visuel) ───────────────────────────────
+// ── Arrow-only landscape (no subgraphs, no node declarations) ─────────────────
 
-function generateLandscapeMermaid(dag: Dag): string {
-  const cats = allCategories(dag).sort((a, b) => a.order - b.order)
-  const validIds = new Set(dag.components.filter((c) => c.name.trim()).map((c) => c.id))
-  const lines: string[] = ['flowchart TB']
-
-  for (const cat of cats) {
-    const comps = dag.components.filter((c) => c.categoryId === cat.id && c.name.trim())
-    if (comps.length === 0) continue
-    lines.push(`  subgraph ${cat.name}`)
-    for (const comp of comps) lines.push(`    ${toNodeId(comp.name)}["${comp.name}"]`)
-    lines.push('  end')
-  }
-
-  const relations = dag.relations.filter(
-    (r) => validIds.has(r.fromComponentId) && validIds.has(r.toComponentId),
-  )
-  if (relations.length > 0) {
-    lines.push('')
-    for (const rel of relations) {
-      const from = dag.components.find((c) => c.id === rel.fromComponentId)!
-      const to   = dag.components.find((c) => c.id === rel.toComponentId)!
+function generateLandscapeArrows(dag: Dag): string {
+  const appComps = dag.components.filter((c) => c.name.trim())
+  const validIds = new Set(appComps.map((c) => c.id))
+  const arrows = dag.relations
+    .filter((r) => validIds.has(r.fromComponentId) && validIds.has(r.toComponentId))
+    .map((rel) => {
+      const from  = appComps.find((c) => c.id === rel.fromComponentId)!
+      const to    = appComps.find((c) => c.id === rel.toComponentId)!
       const label = [rel.protocol, rel.label].filter(Boolean).join(' — ')
-      const fromId = toNodeId(from.name)
-      const toId   = toNodeId(to.name)
-      lines.push(label ? `  ${fromId} -->|${label}| ${toId}` : `  ${fromId} --> ${toId}`)
-    }
-  }
-
-  return lines.join('\n')
+      const fId   = toNodeId(from.name)
+      const tId   = toNodeId(to.name)
+      return label ? `${fId} -->|${label}| ${tId}` : `${fId} --> ${tId}`
+    })
+    .join('\n')
+  return `flowchart TB\n${arrows}`
 }
 
-// ── Technical landscape Mermaid (zones comme subgraphs) ──────────────────────
+// ── Arrow-only technical landscape (component-level, no zone/instance info) ───
 
-function generateTechnicalLandscapeMermaid(dag: Dag): string {
-  const tl       = dag.technicalLandscape
-  const zones    = allNetworkZones(tl)
+function generateTechnicalLandscapeArrows(dag: Dag): string {
   const allComps = [...dag.components, ...(dag.technicalComponents ?? [])]
-  const lines: string[] = ['flowchart TB']
-
-  // Zones as subgraphs — only those with at least one instance
-  for (const zone of zones) {
-    const instances = tl.instances.filter((i) => i.networkZoneId === zone.id)
-    if (instances.length === 0) continue
-    lines.push(`  subgraph ${zone.name}`)
-    for (const inst of instances) {
-      const comp = allComps.find((c) => c.id === inst.componentId)
-      if (!comp?.name.trim()) continue
-      lines.push(`    ${toNodeId(comp.name)}["${comp.name}"]`)
-    }
-    lines.push('  end')
-  }
-
-  // Technical services in their own subgraph
-  const services = tl.technicalServices ?? []
-  if (services.length > 0) {
-    lines.push('  subgraph Technical Services')
-    for (const svc of services) {
-      if (!svc.name.trim()) continue
-      lines.push(`    ${toNodeId(svc.name)}["${svc.name}"]`)
-    }
-    lines.push('  end')
-  }
-
-  // Technical relations as arrows
-  const techRels = tl.technicalRelations ?? []
-  if (techRels.length > 0) {
-    lines.push('')
-    for (const rel of techRels) {
-      const fromInst = tl.instances.find((i) => i.id === rel.fromInstanceId)
-      const toInst   = tl.instances.find((i) => i.id === rel.toInstanceId)
-      if (!fromInst || !toInst) continue
-      const fromComp = allComps.find((c) => c.id === fromInst.componentId)
-      const toComp   = allComps.find((c) => c.id === toInst.componentId)
-      if (!fromComp || !toComp) continue
-      const fromId = toNodeId(fromComp.name)
-      const toId   = toNodeId(toComp.name)
-      const label  = [rel.protocol, rel.label].filter(Boolean).join(' — ')
-      lines.push(label ? `  ${fromId} -->|${label}| ${toId}` : `  ${fromId} --> ${toId}`)
-    }
-  }
-
-  return lines.join('\n')
+  const arrows = (dag.technicalLandscape.technicalRelations ?? [])
+    .map((rel) => {
+      const from  = allComps.find((c) => c.id === rel.fromComponentId)
+      const to    = allComps.find((c) => c.id === rel.toComponentId)
+      if (!from || !to) return null
+      const label = [rel.protocol, rel.label].filter(Boolean).join(' — ')
+      const fId   = toNodeId(from.name)
+      const tId   = toNodeId(to.name)
+      return label ? `${fId} -->|${label}| ${tId}` : `${fId} --> ${tId}`
+    })
+    .filter((l): l is string => l !== null)
+    .join('\n')
+  return `flowchart TB\n${arrows}`
 }
 
-// ── Component metadata block ──────────────────────────────────────────────────
+// ── Component entry block ─────────────────────────────────────────────────────
 
-function componentMetaLines(comp: { name: string; description?: string; technology?: string; framework?: string; constraints?: string }, keyIndent: number): string[] {
+function componentEntryLines(
+  comp: { name: string; description?: string; technology?: string; framework?: string; constraints?: string },
+  catName: string | undefined,
+  zoneNames: string[],
+  keyIndent: number,
+): string[] {
+  const ki    = ' '.repeat(keyIndent)
   const lines: string[] = []
-  const ki = ' '.repeat(keyIndent)
+  lines.push(`${ki}name: ${yamlScalar(comp.name)}`)
+  if (catName) lines.push(`${ki}category: ${yamlScalar(catName)}`)
+  if (zoneNames.length > 0) lines.push(`${ki}zones: [${zoneNames.map(yamlScalar).join(', ')}]`)
   if (comp.description?.trim()) lines.push(`${ki}description: ${yamlBlock(comp.description, keyIndent + 2)}`)
   if (comp.technology?.trim())  lines.push(`${ki}technology: ${yamlScalar(comp.technology)}`)
   if (comp.framework?.trim())   lines.push(`${ki}framework: ${yamlScalar(comp.framework)}`)
@@ -127,56 +83,86 @@ function componentMetaLines(comp: { name: string; description?: string; technolo
 export function exportDagAsYaml(dag: Dag): string {
   const out: string[] = []
 
-  // DAG-level metadata
+  const zones    = allNetworkZones(dag.technicalLandscape)
+  const allCats  = allCategories(dag).sort((a, b) => a.order - b.order)
+  const appComps = dag.components.filter((c) => c.name.trim())
+  const techComps = (dag.technicalComponents ?? []).filter((c) => c.name.trim())
+
+  // DAG metadata
   out.push(`name: ${yamlScalar(dag.name)}`)
   if (dag.description?.trim()) out.push(`description: ${yamlBlock(dag.description, 2)}`)
 
-  // Application components metadata
-  const appComps = dag.components.filter((c) => c.name.trim())
+  // Categories — only those actually used by at least one component
+  const usedCatIds = new Set([...appComps, ...techComps].map((c) => c.categoryId).filter(Boolean))
+  const usedCats   = allCats.filter((c) => usedCatIds.has(c.id))
+  if (usedCats.length > 0) {
+    out.push('')
+    out.push('categories:')
+    for (const cat of usedCats) out.push(`  - ${yamlScalar(cat.name)}`)
+  }
+
+  // Network zones — only those used in at least one instance
+  const usedZoneIds = new Set(dag.technicalLandscape.instances.map((i) => i.networkZoneId))
+  const usedZones   = zones.filter((z) => usedZoneIds.has(z.id))
+  if (usedZones.length > 0) {
+    out.push('')
+    out.push('network-zones:')
+    for (const zone of usedZones) out.push(`  - ${yamlScalar(zone.name)}`)
+  }
+
+  // Application components
   if (appComps.length > 0) {
     out.push('')
     out.push('components:')
     for (const comp of appComps) {
+      const cat       = allCats.find((c) => c.id === comp.categoryId)
+      const zoneIds   = dag.technicalLandscape.instances.filter((i) => i.componentId === comp.id).map((i) => i.networkZoneId)
+      const zoneNames = zones.filter((z) => zoneIds.includes(z.id)).map((z) => z.name)
       out.push(`  ${toNodeId(comp.name)}:`)
-      out.push(...componentMetaLines(comp, 4))
+      out.push(...componentEntryLines(comp, cat?.name, zoneNames, 4))
     }
   }
 
-  // Technical components metadata
-  const techComps = (dag.technicalComponents ?? []).filter((c) => c.name.trim())
+  // Technical components
   if (techComps.length > 0) {
     out.push('')
     out.push('technical-components:')
     for (const comp of techComps) {
+      const cat       = allCats.find((c) => c.id === comp.categoryId)
+      const zoneIds   = dag.technicalLandscape.instances.filter((i) => i.componentId === comp.id).map((i) => i.networkZoneId)
+      const zoneNames = zones.filter((z) => zoneIds.includes(z.id)).map((z) => z.name)
       out.push(`  ${toNodeId(comp.name)}:`)
-      out.push(...componentMetaLines(comp, 4))
+      out.push(...componentEntryLines(comp, cat?.name, zoneNames, 4))
     }
   }
 
-  // Technical services metadata
+  // Technical services (cross-cutting, no category/zones)
   const services = (dag.technicalLandscape.technicalServices ?? []).filter((s) => s.name.trim())
   if (services.length > 0) {
     out.push('')
     out.push('technical-services:')
     for (const svc of services) {
       out.push(`  ${toNodeId(svc.name)}:`)
+      out.push(`    name: ${yamlScalar(svc.name)}`)
       if (svc.description?.trim()) out.push(`    description: ${yamlBlock(svc.description, 6)}`)
     }
   }
 
-  // Application landscape
+  // Application landscape — arrows only
+  const landscapeArrows = generateLandscapeArrows(dag)
   out.push('')
-  out.push(`landscape: ${yamlBlock(generateLandscapeMermaid(dag), 2)}`)
+  out.push(`landscape: ${yamlBlock(landscapeArrows || '%% no relations yet', 2)}`)
 
-  // Technical landscape (only if content exists)
+  // Technical landscape — arrows only (only if there is technical content)
   const tl = dag.technicalLandscape
   const hasTechContent =
     tl.instances.length > 0 ||
     (tl.technicalRelations?.length ?? 0) > 0 ||
     (tl.technicalServices?.length ?? 0) > 0
   if (hasTechContent) {
+    const techArrows = generateTechnicalLandscapeArrows(dag)
     out.push('')
-    out.push(`technical-landscape: ${yamlBlock(generateTechnicalLandscapeMermaid(dag), 2)}`)
+    out.push(`technical-landscape: ${yamlBlock(techArrows || '%% no relations yet', 2)}`)
   }
 
   // Application flows
@@ -193,8 +179,7 @@ export function exportDagAsYaml(dag: Dag): string {
           ? (flow.mermaidDsl ?? '')
           : ''
       if (body.trim()) {
-        const diagram = `sequenceDiagram\n${body}`
-        out.push(`    diagram: ${yamlBlock(diagram, 6)}`)
+        out.push(`    diagram: ${yamlBlock(`sequenceDiagram\n${body}`, 6)}`)
       }
     }
   }
@@ -204,11 +189,11 @@ export function exportDagAsYaml(dag: Dag): string {
 
 export function downloadDagAsYaml(dag: Dag): void {
   const content = exportDagAsYaml(dag)
-  const blob = new Blob([content], { type: 'text/yaml' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `${dag.name.replace(/[^\w\s-]/g, '').trim()}.dag.yaml`
+  const blob    = new Blob([content], { type: 'text/yaml' })
+  const url     = URL.createObjectURL(blob)
+  const a       = document.createElement('a')
+  a.href        = url
+  a.download    = `${dag.name.replace(/[^\w\s-]/g, '').trim()}.dag.yaml`
   a.click()
   URL.revokeObjectURL(url)
 }
