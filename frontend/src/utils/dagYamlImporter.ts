@@ -227,7 +227,7 @@ function importNewFormat(data: Record<string, unknown>): { dag: Dag; errors: str
     const directComp = compByNodeId.get(nodeId) ?? techCompByNodeId.get(nodeId)
     if (directComp) {
       const insts = instancesByCompId.get(directComp.id) ?? []
-      if (insts.length > 0) return { comp: directComp, instanceId: insts[0].id }
+      if (insts.length > 0) return { comp: directComp, instanceId: insts[0]!.id }
       return undefined
     }
     // Multi-zone: nodeId ends with __<toNodeId(zone.name)>

@@ -303,6 +303,7 @@ export const useDagStore = defineStore(
             )
             existing.components.push({
               id:          generateId(),
+              nodeId:      toNodeId(comp.name),
               name:        comp.name,
               description: comp.description,
               categoryId:  category?.id ?? '',
@@ -321,6 +322,7 @@ export const useDagStore = defineStore(
             )
             existing.technicalComponents.push({
               id:          generateId(),
+              nodeId:      toNodeId(comp.name),
               name:        comp.name,
               description: comp.description,
               categoryId:  category?.id ?? '',
@@ -372,6 +374,7 @@ export const useDagStore = defineStore(
 
       const components = (draft.components ?? []).map((c) => ({
         id:          generateId(),
+        nodeId:      toNodeId(c.name),
         name:        c.name,
         description: c.description,
         categoryId:  categoryIdByName.get(c.category.toLowerCase()) ?? '',
@@ -379,6 +382,7 @@ export const useDagStore = defineStore(
 
       const technicalComponents = (draft.technicalComponents ?? []).map((c) => ({
         id:          generateId(),
+        nodeId:      toNodeId(c.name),
         name:        c.name,
         description: c.description,
         categoryId:  categoryIdByName.get(c.category.toLowerCase()) ?? '',
