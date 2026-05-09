@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml'
 import { parseDsl } from '@/utils/dslParser'
 import { parseFlowSteps } from '@/utils/sequenceDslGenerator'
-import { keyToName } from '@/utils/landscapeDslGenerator'
+import { keyToName, toNodeId } from '@/utils/landscapeDslGenerator'
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_NETWORK_ZONES,
@@ -91,7 +91,8 @@ function filterStoredCustomCategories(customCategories: Category[]): Category[] 
 // NEW FORMAT — top-level "categories" list is the source of truth
 // ─────────────────────────────────────────────────────────────────────────────
 
-function importNewFormat(data: Record<string, unknown>): Dag {
+function importNewFormat(data: Record<string, unknown>): { dag: Dag; errors: string[] } {
+  const errors: string[] = []
   const categoriesRaw   = (data.categories             ?? []) as string[]
   const zonesRaw        = (data['network-zones']        ?? []) as string[]
   const compMetaRaw     = (data.components              ?? {}) as Record<string, Record<string, unknown>>
@@ -212,6 +213,36 @@ function importNewFormat(data: Record<string, unknown>): Dag {
     description: String(meta.description ?? '').trim() || undefined,
   }))
 
+  // ── Multi-zone node ID resolution ─────────────────────────────────────────
+  // Resolves nodeIds like "api_gateway__dmz" or "web_frontend__internal_dmz"
+  // to their component + specific instance. For single-zone components the plain
+  // key is used; for multi-zone, the suffix __<toNodeId(zone.name)> selects the
+  // right instance.
+  const allResolvedZones = Array.from(zoneByName.values())
+
+  function resolveToCompAndInstance(
+    nodeId: string,
+  ): { comp: Component; instanceId: string } | undefined {
+    // Direct lookup (single-zone or unzoned component)
+    const directComp = compByNodeId.get(nodeId) ?? techCompByNodeId.get(nodeId)
+    if (directComp) {
+      const insts = instancesByCompId.get(directComp.id) ?? []
+      if (insts.length > 0) return { comp: directComp, instanceId: insts[0].id }
+      return undefined
+    }
+    // Multi-zone: nodeId ends with __<toNodeId(zone.name)>
+    for (const zone of allResolvedZones) {
+      const suffix = `__${toNodeId(zone.name)}`
+      if (!nodeId.endsWith(suffix)) continue
+      const compKey = nodeId.slice(0, -suffix.length)
+      const comp = compByNodeId.get(compKey) ?? techCompByNodeId.get(compKey)
+      if (!comp) continue
+      const inst = (instancesByCompId.get(comp.id) ?? []).find((i) => i.networkZoneId === zone.id)
+      if (inst) return { comp, instanceId: inst.id }
+    }
+    return undefined
+  }
+
   // ── Landscape arrows → relations ──────────────────────────────────────────
   const relations: Relation[] = []
   if (data.landscape) {
@@ -219,7 +250,8 @@ function importNewFormat(data: Record<string, unknown>): Dag {
     for (const rel of parsed.relations) {
       const from = findComp(rel.fromId)
       const to   = findComp(rel.toId)
-      if (!from || !to) continue
+      if (!from) { errors.push(`landscape: unknown component "${rel.fromId}"`); continue }
+      if (!to)   { errors.push(`landscape: unknown component "${rel.toId}"`);   continue }
       const { protocol, label } = splitProtocolLabel(rel.label ?? '')
       relations.push({ id: uid(), fromComponentId: from.id, toComponentId: to.id, protocol, label, source: 'manual' })
     }
@@ -230,19 +262,17 @@ function importNewFormat(data: Record<string, unknown>): Dag {
   if (data['technical-landscape']) {
     const parsed = parseDsl(`flowchart TB\n${String(data['technical-landscape'])}`)
     for (const rel of parsed.relations) {
-      const fromComp = findComp(rel.fromId)
-      const toComp   = findComp(rel.toId)
-      if (!fromComp || !toComp) continue
-      const fromInsts = instancesByCompId.get(fromComp.id) ?? []
-      const toInsts   = instancesByCompId.get(toComp.id)   ?? []
-      if (!fromInsts.length || !toInsts.length) continue
+      const from = resolveToCompAndInstance(rel.fromId)
+      const to   = resolveToCompAndInstance(rel.toId)
+      if (!from) { errors.push(`technical-landscape: unknown node "${rel.fromId}"`); continue }
+      if (!to)   { errors.push(`technical-landscape: unknown node "${rel.toId}"`);   continue }
       const { protocol, label } = splitProtocolLabel(rel.label ?? '')
       technicalRelations.push({
         id:              uid(),
-        fromComponentId: fromComp.id,
-        toComponentId:   toComp.id,
-        fromInstanceId:  fromInsts[0].id,
-        toInstanceId:    toInsts[0].id,
+        fromComponentId: from.comp.id,
+        toComponentId:   to.comp.id,
+        fromInstanceId:  from.instanceId,
+        toInstanceId:    to.instanceId,
         protocol,
         label,
       })
@@ -274,7 +304,7 @@ function importNewFormat(data: Record<string, unknown>): Dag {
     technicalServices,
   }
 
-  return {
+  const dag: Dag = {
     id:               uid(),
     name:             String(data.name).trim(),
     description:      String(data.description ?? '').trim(),
@@ -288,6 +318,7 @@ function importNewFormat(data: Record<string, unknown>): Dag {
     technicalLandscape,
     applicationFlows,
   }
+  return { dag, errors }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +333,7 @@ function importOldFormat(_data: Record<string, unknown>): never {
 // Public entry point — detects format automatically
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function importDagFromYaml(content: string): Dag {
+export function importDagFromYaml(content: string): { dag: Dag; errors: string[] } {
   const data = parseYaml(content) as Record<string, unknown>
   if (!data.name) throw new Error('Missing "name" field in YAML')
 

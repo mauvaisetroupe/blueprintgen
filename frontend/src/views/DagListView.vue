@@ -44,6 +44,8 @@ function saveDag(dag: Dag, event: MouseEvent) {
 
 // --- Open (JSON / YAML) ---
 const openError      = ref<string | null>(null)
+const openWarnings   = ref<string[]>([])
+const pendingImport  = ref<Dag | null>(null)
 const jsonFileInput  = ref<HTMLInputElement>()
 const yamlFileInput  = ref<HTMLInputElement>()
 const openMenu       = ref<InstanceType<typeof Menu>>()
@@ -68,14 +70,34 @@ const openMenuItems = [
   },
 ]
 
+function clearPending() {
+  openError.value = null
+  openWarnings.value = []
+  pendingImport.value = null
+}
+
+function proceedWithImport(dag: Dag) {
+  const saved = store.openDag(dag)
+  clearPending()
+  router.push(`/dag/${saved.id}`)
+}
+
 async function handleOpenFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
+  clearPending()
   try {
     const text = await file.text()
     let dagData: Dag
     if (file.name.endsWith('.yaml') || file.name.endsWith('.yml')) {
-      dagData = importDagFromYaml(text)
+      const { dag, errors } = importDagFromYaml(text)
+      if (errors.length > 0) {
+        pendingImport.value = dag
+        openWarnings.value = errors
+        ;(e.target as HTMLInputElement).value = ''
+        return
+      }
+      dagData = dag
     } else {
       const data = JSON.parse(text) as Dag
       if (!data.name || !Array.isArray(data.components)) {
@@ -92,12 +114,19 @@ async function handleOpenFile(e: Event) {
 }
 
 function handlePasteYaml() {
+  clearPending()
   try {
-    const dagData = importDagFromYaml(pastedYamlContent.value)
-    const dag = store.openDag(dagData)
-    router.push(`/dag/${dag.id}`)
-    pasteDialogVisible.value = false
-    pastedYamlContent.value = ''
+    const { dag, errors } = importDagFromYaml(pastedYamlContent.value)
+    if (errors.length > 0) {
+      pendingImport.value = dag
+      openWarnings.value = errors
+      pasteDialogVisible.value = false
+    } else {
+      const saved = store.openDag(dag)
+      router.push(`/dag/${saved.id}`)
+      pasteDialogVisible.value = false
+      pastedYamlContent.value = ''
+    }
   } catch (err) {
     openError.value = err instanceof Error ? err.message : 'Erreur de lecture du YAML collé.'
   }
@@ -127,7 +156,17 @@ function handlePasteYaml() {
       </div>
       <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="handleOpenFile" />
       <input ref="yamlFileInput" type="file" accept=".yaml,.yml" style="display:none" @change="handleOpenFile" />
-      <small v-if="openError" class="open-error">{{ openError }}</small>
+    </div>
+    <small v-if="openError" class="open-error">{{ openError }}</small>
+    <div v-if="openWarnings.length > 0" class="open-warnings">
+      <p class="warnings-title">Import completed with {{ openWarnings.length }} warning(s) — some relations were skipped:</p>
+      <ul class="warnings-list">
+        <li v-for="w in openWarnings" :key="w">{{ w }}</li>
+      </ul>
+      <div class="warnings-actions">
+        <Button label="Import anyway" icon="pi pi-check" severity="warn" size="small" @click="proceedWithImport(pendingImport!)" />
+        <Button label="Discard" icon="pi pi-times" severity="secondary" size="small" @click="clearPending" />
+      </div>
     </div>
 
     <div v-if="store.dags.length === 0" class="empty">
@@ -237,6 +276,33 @@ function handlePasteYaml() {
   color: #dc2626;
   font-size: 0.8rem;
   margin-top: 0.25rem;
+}
+
+.open-warnings {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.warnings-title {
+  font-weight: 600;
+  color: #92400e;
+  margin: 0 0 0.4rem;
+}
+
+.warnings-list {
+  margin: 0 0 0.75rem 1.25rem;
+  padding: 0;
+  color: #78350f;
+  line-height: 1.6;
+}
+
+.warnings-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .dag-desc { color: var(--p-text-muted-color); font-size: 0.875rem; margin-bottom: 0.5rem; }
