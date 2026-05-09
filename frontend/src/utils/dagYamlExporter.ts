@@ -1,6 +1,6 @@
 import type { Dag } from '@/types/dag'
 import { allNetworkZones, allCategories } from '@/types/dag'
-import { toNodeId } from '@/utils/landscapeDslGenerator'
+import { toNodeId, keyToName } from '@/utils/landscapeDslGenerator'
 import { buildSequenceBodyFromSteps, parseFlowSteps } from '@/utils/sequenceDslGenerator'
 
 // ── YAML string helpers ───────────────────────────────────────────────────────
@@ -31,8 +31,8 @@ function generateLandscapeArrows(dag: Dag): string {
       const from  = appComps.find((c) => c.id === rel.fromComponentId)!
       const to    = appComps.find((c) => c.id === rel.toComponentId)!
       const label = [rel.protocol, rel.label].filter(Boolean).join(' — ')
-      const fId   = toNodeId(from.name)
-      const tId   = toNodeId(to.name)
+      const fId   = from.nodeId
+      const tId   = to.nodeId
       return label ? `${fId} -->|${label}| ${tId}` : `${fId} --> ${tId}`
     })
     .join('\n')
@@ -49,8 +49,8 @@ function generateTechnicalLandscapeArrows(dag: Dag): string {
       const to    = allComps.find((c) => c.id === rel.toComponentId)
       if (!from || !to) return null
       const label = [rel.protocol, rel.label].filter(Boolean).join(' — ')
-      const fId   = toNodeId(from.name)
-      const tId   = toNodeId(to.name)
+      const fId   = from.nodeId
+      const tId   = to.nodeId
       return label ? `${fId} -->|${label}| ${tId}` : `${fId} --> ${tId}`
     })
     .filter((l): l is string => l !== null)
@@ -61,14 +61,15 @@ function generateTechnicalLandscapeArrows(dag: Dag): string {
 // ── Component entry block ─────────────────────────────────────────────────────
 
 function componentEntryLines(
-  comp: { name: string; description?: string; technology?: string; framework?: string; constraints?: string },
+  comp: { nodeId: string; name: string; description?: string; technology?: string; framework?: string; constraints?: string },
   catName: string | undefined,
   zoneNames: string[],
   keyIndent: number,
 ): string[] {
   const ki    = ' '.repeat(keyIndent)
   const lines: string[] = []
-  lines.push(`${ki}name: ${yamlScalar(comp.name)}`)
+  const key = comp.nodeId
+  if (comp.name !== keyToName(key)) lines.push(`${ki}name: ${yamlScalar(comp.name)}`)
   if (catName) lines.push(`${ki}category: ${yamlScalar(catName)}`)
   if (zoneNames.length > 0) lines.push(`${ki}zones: [${zoneNames.map(yamlScalar).join(', ')}]`)
   if (comp.description?.trim()) lines.push(`${ki}description: ${yamlBlock(comp.description, keyIndent + 2)}`)
@@ -118,7 +119,7 @@ export function exportDagAsYaml(dag: Dag): string {
       const cat       = allCats.find((c) => c.id === comp.categoryId)
       const zoneIds   = dag.technicalLandscape.instances.filter((i) => i.componentId === comp.id).map((i) => i.networkZoneId)
       const zoneNames = zones.filter((z) => zoneIds.includes(z.id)).map((z) => z.name)
-      out.push(`  ${toNodeId(comp.name)}:`)
+      out.push(`  ${comp.nodeId}:`)
       out.push(...componentEntryLines(comp, cat?.name, zoneNames, 4))
     }
   }
@@ -131,7 +132,7 @@ export function exportDagAsYaml(dag: Dag): string {
       const cat       = allCats.find((c) => c.id === comp.categoryId)
       const zoneIds   = dag.technicalLandscape.instances.filter((i) => i.componentId === comp.id).map((i) => i.networkZoneId)
       const zoneNames = zones.filter((z) => zoneIds.includes(z.id)).map((z) => z.name)
-      out.push(`  ${toNodeId(comp.name)}:`)
+      out.push(`  ${comp.nodeId}:`)
       out.push(...componentEntryLines(comp, cat?.name, zoneNames, 4))
     }
   }

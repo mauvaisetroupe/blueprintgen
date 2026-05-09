@@ -145,7 +145,7 @@ function computeConnectionPoints(
   // compId → bounds SVG
   const boundsOf = new Map<string, Bounds>()
   for (const comp of dag.components) {
-    const nb = nodeBounds.get(toNodeId(comp.name))
+    const nb = nodeBounds.get(comp.nodeId)
     if (nb) boundsOf.set(comp.id, nb)
   }
 
@@ -251,7 +251,7 @@ function buildDrawioXml(
     const cb = catCluster.get(cat.id)
     if (!cb) continue
     const hasNodes = dag.components.some(
-      (c) => c.categoryId === cat.id && nodeBounds.has(toNodeId(c.name)),
+      (c) => c.categoryId === cat.id && nodeBounds.has(c.nodeId),
     )
     if (!hasNodes) continue
 
@@ -267,8 +267,7 @@ function buildDrawioXml(
 
   // ── Composants (vertices) ────────────────────────────────────────────────
   for (const comp of dag.components) {
-    const nodeId = toNodeId(comp.name)
-    const nb = nodeBounds.get(nodeId)
+    const nb = nodeBounds.get(comp.nodeId)
     if (!nb) continue
 
     const cat = categories.find((c) => c.id === comp.categoryId)
@@ -303,7 +302,7 @@ function buildDrawioXml(
     const fromComp = dag.components.find((c) => c.id === rel.fromComponentId)
     const toComp   = dag.components.find((c) => c.id === rel.toComponentId)
     if (!fromComp || !toComp) continue
-    if (!nodeBounds.has(toNodeId(fromComp.name)) || !nodeBounds.has(toNodeId(toComp.name))) continue
+    if (!nodeBounds.has(fromComp.nodeId) || !nodeBounds.has(toComp.nodeId)) continue
 
     const label = rel.label?.trim() ?? ''
     const cp    = connectionPoints.get(`${rel.fromComponentId}->${rel.toComponentId}`)
@@ -399,7 +398,7 @@ function buildActivityFlowDrawioXml(
     const cb = catCluster.get(cat.id)
     if (!cb) continue
     const hasNodes = dag.components.some(
-      (c) => c.categoryId === cat.id && nodeBounds.has(toNodeId(c.name)),
+      (c) => c.categoryId === cat.id && nodeBounds.has(c.nodeId),
     )
     if (!hasNodes) continue
 
@@ -415,7 +414,7 @@ function buildActivityFlowDrawioXml(
 
   // Composants (vertices) — uniquement ceux présents dans le SVG
   for (const comp of dag.components) {
-    const nb = nodeBounds.get(toNodeId(comp.name))
+    const nb = nodeBounds.get(comp.nodeId)
     if (!nb) continue
 
     const cat = flowCategories.find((c) => c.id === comp.categoryId)

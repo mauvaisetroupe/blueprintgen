@@ -3,7 +3,6 @@ import { ref, nextTick, computed, onMounted } from 'vue'
 import { useDagStore } from '@/stores/dag'
 import type { Category, Component } from '@/types/dag'
 import { DEFAULT_CATEGORY_NAMES, allCategories } from '@/types/dag'
-import { toNodeId } from '@/utils/landscapeDslGenerator'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Popover from 'primevue/popover'
@@ -125,14 +124,49 @@ function onDescriptionInput(component: Component, e: Event) {
   updateDescription(component, el.value)
 }
 
-// --- Add row ---
-async function addRow(focusRow?: number) {
-  addComp('', '', props.category.id)
-  const newIndex = focusRow ?? props.components.length
-  await focusCell(newIndex, 0)
+// --- Pending new row (local only — not in store until name confirmed on blur) ---
+const pendingName = ref<string | null>(null)
+const pendingDesc = ref('')
+const pendingNameRef = ref<HTMLInputElement | null>(null)
+const pendingDescRef = ref<HTMLTextAreaElement | null>(null)
+
+async function addRow() {
+  pendingName.value = ''
+  pendingDesc.value = ''
+  await nextTick()
+  pendingNameRef.value?.focus()
 }
 
-// --- Keyboard navigation ---
+function commitPending() {
+  const name = pendingName.value?.trim() ?? ''
+  if (name) addComp(name, pendingDesc.value.trim(), props.category.id)
+  pendingName.value = null
+  pendingDesc.value = ''
+}
+
+function discardPending() {
+  pendingName.value = null
+  pendingDesc.value = ''
+}
+
+function onPendingFocusOut(e: FocusEvent) {
+  const related = e.relatedTarget as HTMLElement | null
+  if (related && (related === pendingNameRef.value || related === pendingDescRef.value)) return
+  commitPending()
+}
+
+function onPendingNameKeydown(e: KeyboardEvent) {
+  if (e.key === 'Tab')    { e.preventDefault(); pendingDescRef.value?.focus() }
+  else if (e.key === 'Enter')  { e.preventDefault(); commitPending(); addRow() }
+  else if (e.key === 'Escape') { discardPending() }
+}
+
+function onPendingDescKeydown(e: KeyboardEvent) {
+  if (e.key === 'Tab')    { e.preventDefault(); commitPending(); addRow() }
+  else if (e.key === 'Escape') { discardPending() }
+}
+
+// --- Keyboard navigation (existing rows) ---
 function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
   if (e.key === 'Tab') {
     e.preventDefault()
@@ -142,14 +176,14 @@ function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
     } else if (rowIndex + 1 < props.components.length) {
       focusCell(rowIndex + 1, 0)
     } else {
-      addRow(rowIndex + 1)
+      addRow()
     }
   } else if (e.key === 'Enter' && colIndex !== 1) {
     e.preventDefault()
     if (rowIndex + 1 < props.components.length) {
       focusCell(rowIndex + 1, 0)
     } else {
-      addRow(rowIndex + 1)
+      addRow()
     }
   } else if (e.key === 'Backspace' && colIndex === 0) {
     const component = props.components[rowIndex]
@@ -254,7 +288,7 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
             />
           </td>
           <td class="col-id">
-            <span class="node-id">{{ component.name ? toNodeId(component.name) : '' }}</span>
+            <span class="node-id">{{ component.nodeId }}</span>
           </td>
           <td class="col-actions">
             <Button
@@ -272,6 +306,33 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
               severity="danger"
               @click="deleteCompById(component.id)"
             />
+          </td>
+        </tr>
+        <tr v-if="pendingName !== null" @focusout="onPendingFocusOut">
+          <td>
+            <input
+              ref="pendingNameRef"
+              class="cell-input"
+              v-model="pendingName"
+              placeholder="Name"
+              @keydown="onPendingNameKeydown"
+            />
+          </td>
+          <td>
+            <textarea
+              ref="pendingDescRef"
+              class="cell-input"
+              rows="1"
+              v-model="pendingDesc"
+              placeholder="Description"
+              @keydown="onPendingDescKeydown"
+            />
+          </td>
+          <td class="col-id">
+            <span class="node-id pending">—</span>
+          </td>
+          <td class="col-actions">
+            <Button icon="pi pi-times" size="small" text severity="danger" @click="discardPending" />
           </td>
         </tr>
       </tbody>
@@ -434,5 +495,10 @@ function onPaste(e: ClipboardEvent, rowIndex: number, colIndex: number) {
   color: var(--p-text-muted-color);
   padding: 0.2rem 0.4rem;
   user-select: all;
+}
+
+.node-id.pending {
+  opacity: 0.35;
+  user-select: none;
 }
 </style>

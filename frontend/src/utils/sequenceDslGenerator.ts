@@ -1,9 +1,5 @@
 import type { Dag, ApplicationFlow, FlowStep } from '@/types/dag'
 import { allCategories } from '@/types/dag'
-import { toNodeId } from './landscapeDslGenerator'
-
-// Reuse the same ID convention as the landscape generator
-export { toNodeId as toParticipantId }
 
 // --- Parse DSL body → FlowStep[] ---
 
@@ -21,8 +17,8 @@ export function parseFlowSteps(body: string, dag: Dag): FlowStep[] {
     const ret = fwd ? null : line.match(RETURN)
     const m   = fwd ?? ret
     if (!m) continue
-    const fromComp = dag.components.find((c) => toNodeId(c.name) === m[1])
-    const toComp   = dag.components.find((c) => toNodeId(c.name) === m[3])
+    const fromComp = dag.components.find((c) => c.nodeId === m[1])
+    const toComp   = dag.components.find((c) => c.nodeId === m[3])
     if (!fromComp || !toComp) continue
     steps.push({
       id:              crypto.randomUUID(),
@@ -74,7 +70,7 @@ export function collectAllFlowRelations(dag: Dag): Array<{ fromComponentId: stri
 // Returns participant IDs used in arrows but not matching any known component
 export function findUnknownParticipants(body: string, dag: Dag): string[] {
   const arrowRegex = ANY_ARROW_REGEX
-  const knownIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => toNodeId(c.name)))
+  const knownIds = new Set(dag.components.filter((c) => c.name.trim() !== '').map((c) => c.nodeId))
   const unknown = new Set<string>()
   for (const raw of body.split('\n')) {
     const match = raw.trim().match(arrowRegex)
@@ -144,7 +140,7 @@ export function buildActivityDsl(
   const componentMap = new Map(
     dag.components
       .filter((c) => c.name.trim() !== '')
-      .map((c) => [toNodeId(c.name), c.name]),
+      .map((c) => [c.nodeId, c.name]),
   )
 
   const participantIds = new Set<string>()
@@ -184,7 +180,7 @@ export function buildActivityDsl(
   const standalone: string[] = []
 
   for (const id of participantIds) {
-    const comp = dag.components.find((c) => toNodeId(c.name) === id)
+    const comp = dag.components.find((c) => c.nodeId === id)
     if (comp && subgraphCategoryIds.has(comp.categoryId)) {
       if (!byCategory.has(comp.categoryId)) byCategory.set(comp.categoryId, [])
       byCategory.get(comp.categoryId)!.push(id)
@@ -224,8 +220,8 @@ export function buildSequenceBodyFromSteps(steps: FlowStep[], dag: Dag): string 
       const from = dag.components.find((c) => c.id === step.fromComponentId)
       const to   = dag.components.find((c) => c.id === step.toComponentId)
       if (!from || !to) return null
-      const fromId = toNodeId(from.name)
-      const toId   = toNodeId(to.name)
+      const fromId = from.nodeId
+      const toId   = to.nodeId
       const arrow  = step.isReturn ? '-->>' : '->>'
       const label  = step.label?.trim() ?? ''
       return `  ${fromId} ${arrow} ${toId}: ${label}`
@@ -241,7 +237,7 @@ export function buildSequenceDsl(body: string, dag: Dag): string {
   const componentMap = new Map(
     dag.components
       .filter((c) => c.name.trim() !== '')
-      .map((c) => [toNodeId(c.name), c.name]),
+      .map((c) => [c.nodeId, c.name]),
   )
 
   // Collect referenced IDs in body order (Set preserves insertion order)

@@ -2,7 +2,7 @@
 import { computed, inject, nextTick, ref, watch, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDagStore } from '@/stores/dag'
-import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps, toParticipantId, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
+import { generateFlowSkeleton, buildSequenceDsl, buildActivityDsl, buildSequenceBodyFromSteps, parseFlowSteps, findMissingLandscapeRelations, findUnknownParticipants } from '@/utils/sequenceDslGenerator'
 import { allCategories } from '@/types/dag'
 import MermaidDiagram from '@/components/MermaidDiagram.vue'
 import DslEditor from '@/components/DslEditor.vue'
@@ -95,7 +95,7 @@ const activeCategoryIds = computed(() => {
     const m = raw.trim().match(ANY_ARROW)
     if (!m) continue
     for (const pid of [m[1], m[2]]) {
-      const comp = dag.value!.components.find((c) => toParticipantId(c.name) === pid)
+      const comp = dag.value!.components.find((c) => c.nodeId === pid)
       if (comp) ids.add(comp.categoryId)
     }
   }
@@ -140,7 +140,7 @@ watch(selectedFlow, async (flow) => {
 const completionNames = computed(() =>
   (dag.value?.components ?? [])
     .filter((c) => c.name.trim() !== '')
-    .map((c) => toParticipantId(c.name)),
+    .map((c) => c.nodeId),
 )
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -320,7 +320,7 @@ const dslReadOnlyHeaderForEditor = computed(() => {
   if (!dag.value) return 'sequenceDiagram'
   const ids = dag.value.components
     .filter((c) => c.name.trim() !== '')
-    .map((c) => `  %%   ${toParticipantId(c.name)} (${c.name})`)
+    .map((c) => `  %%   ${c.nodeId} (${c.name})`)
   const lines = ['sequenceDiagram']
   if (ids.length > 0) {
     lines.push('  %% Available participants:')

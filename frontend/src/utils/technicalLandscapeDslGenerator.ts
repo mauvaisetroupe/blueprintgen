@@ -43,14 +43,14 @@ export function generateTechnicalLandscapeDsl(dag: Dag): string {
         lines.push(`    subgraph ${zoneNodeId}_${toNodeId(category.name)} ["${category.name}"]`)
         for (const comp of compsInCat) {
           const isMulti = (instancesByComponent.get(comp.id)?.length ?? 0) > 1
-          const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
+          const nodeId = nodeIdForInstance(comp, zone, isMulti)
           lines.push(`      ${nodeId}${nodeLabel(comp, shape)}`)
         }
         lines.push('    end')
       } else {
         for (const comp of compsInCat) {
           const isMulti = (instancesByComponent.get(comp.id)?.length ?? 0) > 1
-          const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
+          const nodeId = nodeIdForInstance(comp, zone, isMulti)
           lines.push(`    ${nodeId}${nodeLabel(comp, shape)}`)
         }
       }      
@@ -93,8 +93,8 @@ export function getEditableNodeIds(dag: Dag): Set<string> {
     for (const inst of insts) {
       const zone = zones.find((z) => z.id === inst.networkZoneId)
       nodeIds.add(isMulti && zone
-        ? `${toNodeId(comp.name)}__${toNodeId(zone.name)}`
-        : toNodeId(comp.name))
+        ? `${comp.nodeId}__${toNodeId(zone.name)}`
+        : comp.nodeId)
     }
   }
   return nodeIds
@@ -160,7 +160,7 @@ export function generateTechnicalLandscapeCommentHeader(dag: Dag): string {
     const zone = zones.find((z) => z.id === inst.networkZoneId)
     const comp = allComps(dag).find((c) => c.id === inst.componentId)
     if (comp && zone) {
-      const nodeId = nodeIdForInstance(comp.name, zone.name, isMulti)
+      const nodeId = nodeIdForInstance(comp, zone, isMulti)
       nodes.push(`  %%   ${nodeId}`)
     }
   }
@@ -195,8 +195,8 @@ export function generateTechnicalRelationsBody(dag: Dag): string {
     const toZone   = toInst   ? zones.find((z) => z.id === toInst.networkZoneId)   : undefined
     const fromIsMulti = (instancesByComponent.get(tr.fromComponentId)?.length ?? 0) > 1
     const toIsMulti   = (instancesByComponent.get(tr.toComponentId)?.length   ?? 0) > 1
-    const fromId = fromZone ? nodeIdForInstance(fromComp.name, fromZone.name, fromIsMulti) : toNodeId(fromComp.name)
-    const toId   = toZone   ? nodeIdForInstance(toComp.name,   toZone.name,   toIsMulti)   : toNodeId(toComp.name)
+    const fromId = fromZone ? nodeIdForInstance(fromComp, fromZone, fromIsMulti) : fromComp.nodeId
+    const toId   = toZone   ? nodeIdForInstance(toComp,   toZone,   toIsMulti)   : toComp.nodeId
     const edgeLabel = tr.protocol
     lines.push(edgeLabel ? `  ${fromId} -->|${sanitizeLabel(edgeLabel)}| ${toId}` : `  ${fromId} --> ${toId}`)
   } 
@@ -352,8 +352,8 @@ function resolveNodeIdToInstance(
   for (const zone of zones) {
     const suffix = `__${toNodeId(zone.name)}`
     if (nodeId.endsWith(suffix)) {
-      const compNodeId = nodeId.slice(0, -suffix.length)
-      const comp = allComps(dag).find((c) => c.name.trim() !== '' && toNodeId(c.name) === compNodeId)
+      const compId = nodeId.slice(0, -suffix.length)
+      const comp = allComps(dag).find((c) => c.name.trim() !== '' && c.nodeId === compId)
       if (comp) {
         const inst = tl.instances.find((i) => i.componentId === comp.id && i.networkZoneId === zone.id)
         if (inst) return { compId: comp.id, instId: inst.id }
@@ -362,7 +362,7 @@ function resolveNodeIdToInstance(
   }
 
   // Single-instance
-  const comp = allComps(dag).find((c) => c.name.trim() !== '' && toNodeId(c.name) === nodeId)
+  const comp = allComps(dag).find((c) => c.name.trim() !== '' && c.nodeId === nodeId)
   if (comp) {
     const insts = tl.instances.filter((i) => i.componentId === comp.id)
     if (insts.length > 0) return { compId: comp.id, instId: insts[0]!.id }
@@ -372,11 +372,8 @@ function resolveNodeIdToInstance(
 }
 
 // ID de nœud lisible : nom seul si 1 instance, nom__zone si multi-zone
-function nodeIdForInstance(compName: string | undefined, zoneName: string | undefined, isMulti?: boolean): string {
-  if (compName && zoneName) {
-    return isMulti ? `${toNodeId(compName)}__${toNodeId(zoneName)}` : toNodeId(compName)
-  }
-  return isMulti ? `${compName}__${zoneName}` : `${compName}`
+function nodeIdForInstance(comp: { nodeId: string }, zone: { name: string }, isMulti?: boolean): string {
+  return isMulti ? `${comp.nodeId}__${toNodeId(zone.name)}` : comp.nodeId
 }
 
 // // Résout l'ID de nœud pour une extrémité de relation
@@ -453,11 +450,11 @@ export function getCompletionNames(dag: Dag | undefined): string[]  {
     const count = countByComp.get(comp.id) ?? 0
     if (count === 0) continue
     if (count === 1) {
-      names.push(comp.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase())
+      names.push(comp.nodeId)
     } else {
       for (const inst of instances.filter((i) => i.componentId === comp.id)) {
         const zone = zones.find((z) => z.id === inst.networkZoneId)
-        if (zone) names.push(`${comp.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}__${zone.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`)
+        if (zone) names.push(`${comp.nodeId}__${toNodeId(zone.name)}`)
       }
     }
   }

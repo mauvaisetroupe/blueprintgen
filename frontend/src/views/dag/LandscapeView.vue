@@ -8,7 +8,6 @@ import {
   generateComponentsBody,
   generateManualRelationsBody,
   parseRelationsBody,
-  toNodeId,
 } from '@/utils/landscapeDslGenerator'
 import { allCategories } from '@/types/dag'
 import { validateDslAgainstModel, type DslValidationResult } from '@/utils/dslValidator'
@@ -79,8 +78,8 @@ const dslReadOnlyHeaderForEditor = computed(() => {
   if (!dag.value) return ''
   const lines: string[] = []
   lines.push(generateComponentsBody(dag.value, true, false))
-  const example = (dag.value.components[0]?.name && dag.value.components[1]?.name)
-    ? `${toNodeId(dag.value.components[0].name)} --> ${toNodeId(dag.value.components[1].name)}`
+  const example = (dag.value.components[0]?.nodeId && dag.value.components[1]?.nodeId)
+    ? `${dag.value.components[0].nodeId} --> ${dag.value.components[1].nodeId}`
     : "internet_user --> ordering_service"
 
   lines.push("  %% Tip: Use 'Import from flows' to import relationships from sequence diagrams.");
@@ -174,7 +173,7 @@ const validationStatus = computed(() => {
 const completionNames = computed(() =>
   (dag.value?.components ?? [])
     .filter((c) => c.name.trim() !== '')
-    .map((c) => toNodeId(c.name)),
+    .map((c) => c.nodeId),
 )
 
 // ── Subgraph toggles (guided + DSL) ──────────────────────────────────────────

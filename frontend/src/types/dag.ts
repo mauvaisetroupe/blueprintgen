@@ -19,6 +19,7 @@ export interface DefaultCategoryDef {
 
 export interface Component {
   id: string
+  nodeId: string        // identifiant Mermaid stable — généré une fois depuis le nom, jamais modifié automatiquement
   name: string
   description: string
   categoryId: string

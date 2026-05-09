@@ -8,6 +8,30 @@ It can be edited directly in a text editor or IDE, versioned in Git, and re-impo
 - **Structure is declared explicitly** — categories, network zones, and component membership are declared as structured data, not inferred from diagram layout.
 - **Diagrams describe relations only** — `landscape:` and `technical-landscape:` contain only arrows; subgraphs are generated automatically by the application.
 - **Single source of truth** — a component's category comes from its `category:` field, a component's zone(s) from its `zones:` field. No duplication.
+- **Stable component IDs** — the YAML key of a component is its Mermaid node ID. It is set once and never changes, even if the display name is later modified.
+
+## Component IDs (keys)
+
+Each component entry is keyed by its **stable Mermaid node ID** — lowercase, non-alphanumeric characters replaced with underscores.
+
+```yaml
+components:
+  web_frontend:        # ← this is the stable node ID
+    name: Web Frontend # ← this is the display name shown in the UI and diagrams
+```
+
+The `name:` field is **optional**. If absent, the display name is derived from the key by replacing underscores with spaces and capitalising the first character:
+
+| Key | Derived name | `name:` required? |
+|---|---|---|
+| `web_frontend` | `Web frontend` | Yes — if you want `Web Frontend` |
+| `backend_api` | `Backend api` | Yes — if you want `Backend API` |
+| `user` | `User` | No |
+| `monitoring` | `Monitoring` | No |
+| `internet_user` | `Internet user` | No |
+| `payment_gateway` | `Payment gateway` | Yes — if you want `Payment Gateway` |
+
+When the app exports a DAG as YAML, `name:` is written only when it differs from the derived value.
 
 ## Global structure
 
@@ -16,7 +40,7 @@ name: My Application          # DAG name (required)
 description: |                # Free-text description (optional)
   Short description.
 
-categories:                   # Categories used in this DAG
+categories:                   # Categories used in this DAG (required)
   - Frontends
   - Backends
   - ...
@@ -28,8 +52,8 @@ network-zones:                # Network zones (optional)
 
 components:                   # Application components
   my_component:
-    name: My Component        # Display name
-    category: Backends        # Must exist in categories list
+    name: My Component        # Optional — see "Component IDs" above
+    category: Backends        # Must match an entry in categories:
     zones: [DMZ]              # Optional — zones where this component is deployed
     description: ...
     technology: ...
@@ -42,16 +66,15 @@ technical-components:         # Technical/infrastructure components (same struct
 
 technical-services:           # Cross-cutting services (monitoring, logging…)
   monitoring:
-    name: Monitoring
-    description: ...
+    description: Prometheus + Grafana.
 
-landscape: |                  # Application relations — arrows only, no subgraphs
+landscape: |                  # Application relations — arrows only
+  flowchart TB
   component_a -->|HTTPS| component_b
-  ...
 
 technical-landscape: |        # Technical relations — arrows only (optional)
+  flowchart TB
   component_a -->|REST| component_b
-  ...
 
 flows:                        # Application flows (sequence diagrams)
   - name: ...
@@ -87,24 +110,23 @@ network-zones:
   - Intranet
 
 # ── Application components ────────────────────────────────────────────────────
-# Key = Mermaid node ID: non-alphanumeric characters replaced by underscores, lowercased.
-# Example: "Web Frontend" → web_frontend, "Backend API" → backend_api
+# name: is omitted when it matches the key derivation rule (underscores → spaces,
+# first character capitalised). Specify name: only for non-standard casing.
 components:
   user:
-    name: User
     category: Users
     zones: [Internet]
     description: End user accessing the platform via a web browser.
 
   web_frontend:
-    name: Web Frontend
+    name: Web Frontend        # "Web frontend" would be derived — capital F needed
     category: Frontends
     zones: [DMZ]
     technology: React
     framework: Vite
 
   backend_api:
-    name: Backend API
+    name: Backend API         # "Backend api" would be derived — capital A needed
     category: Backends
     zones: [Intranet]
     technology: Spring Boot
@@ -136,13 +158,13 @@ components:
 # ── Technical components ──────────────────────────────────────────────────────
 technical-components:
   waf:
-    name: WAF
+    name: WAF                 # "Waf" would be derived — all-caps needed
     category: Technical Services
     zones: [Internet]
     description: Web Application Firewall — filters inbound Internet traffic.
 
   api_gateway:
-    name: API Gateway
+    name: API Gateway         # "Api gateway" would be derived
     category: Auth Gateway
     zones: [DMZ]
     description: Kong — protection and routing of inbound API calls.
@@ -150,17 +172,16 @@ technical-components:
 # ── Cross-cutting technical services ─────────────────────────────────────────
 technical-services:
   monitoring:
-    name: Monitoring
     description: Prometheus + Grafana — metrics and dashboards.
 
   logging:
-    name: Logging
     description: Elasticsearch + Kibana — centralised log aggregation.
 
 # ── Application landscape — arrows only ──────────────────────────────────────
 # No subgraphs, no node declarations. The application generates subgraphs
 # automatically from the category declared on each component.
 landscape: |
+  flowchart TB
   user -->|HTTPS| web_frontend
   web_frontend -->|HTTPS/JSON| backend_api
   backend_api -->|REST| order_service
@@ -169,8 +190,9 @@ landscape: |
   payment_service -->|HTTPS| payment_gateway
 
 # ── Technical landscape — arrows only ────────────────────────────────────────
-# Same principle. Subgraphs (network zones) are generated from the zones: field.
+# Subgraphs (network zones) are generated from the zones: field on each component.
 technical-landscape: |
+  flowchart TB
   user -->|HTTPS| waf
   waf -->|HTTPS| web_frontend
   web_frontend -->|HTTPS/JSON| api_gateway
@@ -182,7 +204,8 @@ technical-landscape: |
   backend_api --> logging
 
 # ── Application flows ─────────────────────────────────────────────────────────
-# Participant declarations are auto-injected at render time from component names.
+# Use component node IDs (keys) as participant names.
+# Participant declarations are auto-injected at render time — do not add them.
 flows:
   - name: Place an order
     description: |
@@ -211,12 +234,14 @@ flows:
 
 ---
 
-## Rules to follow
+## Rules
 
-- **`categories:`** must list every category referenced by a component's `category:` field.
-- **`network-zones:`** must list every zone referenced by a component's `zones:` field.
-- Component keys are derived from the display name: non-alphanumeric characters replaced with underscores, lowercased (`"Web Frontend"` → `web_frontend`).
-- The `name:` field is the display name shown in diagrams and the UI.
-- `landscape:` and `technical-landscape:` contain only arrow lines — do **not** add `subgraph`, node declarations, or `flowchart TB`.
-- Flow `diagram:` bodies contain only arrows — do **not** add `participant` or `actor` declarations; they are auto-injected at render time.
-- `technology`, `framework`, `constraints`, `zones`, and `description` are optional.
+- **`categories:` is required** — a YAML file without a top-level `categories:` list is rejected on import.
+- Every category referenced by a component's `category:` field must appear in `categories:`.
+- Every zone referenced by a component's `zones:` field must appear in `network-zones:`.
+- Component keys are their **stable Mermaid node IDs** — lowercase, non-alphanumeric characters replaced with underscores. They must be unique across `components:` and `technical-components:`.
+- A component key is permanent. Changing it in the YAML creates a new component; the old one is lost.
+- `name:` is optional. When absent, the display name is derived from the key (`keyToName`). Specify `name:` only when the desired display name has different casing or characters.
+- `landscape:` and `technical-landscape:` contain only arrow lines. Do **not** add `subgraph`, node declarations, or extra directives. The `flowchart TB` header is optional (added automatically on import if absent).
+- Flow `diagram:` bodies contain only arrows. Do **not** add `participant` or `actor` declarations — they are auto-injected at render time.
+- `technology`, `framework`, `constraints`, `zones`, and `description` are optional on any component.

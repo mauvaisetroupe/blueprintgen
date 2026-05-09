@@ -1,7 +1,7 @@
 import { parse as parseYaml } from 'yaml'
 import { parseDsl } from '@/utils/dslParser'
 import { parseFlowSteps } from '@/utils/sequenceDslGenerator'
-import { toNodeId } from '@/utils/landscapeDslGenerator'
+import { keyToName } from '@/utils/landscapeDslGenerator'
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_NETWORK_ZONES,
@@ -78,12 +78,6 @@ function splitProtocolLabel(raw: string): { protocol?: string; label?: string } 
   return { protocol: raw.trim() || undefined }
 }
 
-// ── Name derivation from YAML key (best-effort fallback) ─────────────────────
-
-function nameFromKey(key: string): string {
-  return key.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
-
 // ── Stored custom categories filter ──────────────────────────────────────────
 
 function filterStoredCustomCategories(customCategories: Category[]): Category[] {
@@ -147,9 +141,10 @@ function importNewFormat(data: Record<string, unknown>): Dag {
   const compByNodeId = new Map<string, Component>()
 
   for (const [nodeId, meta] of Object.entries(compMetaRaw)) {
-    const name = String(meta.name ?? '').trim() || nameFromKey(nodeId)
+    const name = String(meta.name ?? '').trim() || keyToName(nodeId)
     const comp: Component = {
       id:          uid(),
+      nodeId,
       name,
       description: String(meta.description ?? '').trim(),
       categoryId:  resolveCompCategory(meta.category as string | undefined),
@@ -166,9 +161,10 @@ function importNewFormat(data: Record<string, unknown>): Dag {
   const techCompByNodeId = new Map<string, Component>()
 
   for (const [nodeId, meta] of Object.entries(techCompMetaRaw)) {
-    const name = String(meta.name ?? '').trim() || nameFromKey(nodeId)
+    const name = String(meta.name ?? '').trim() || keyToName(nodeId)
     const comp: Component = {
       id:          uid(),
+      nodeId,
       name,
       description: String(meta.description ?? '').trim(),
       categoryId:  resolveCompCategory(meta.category as string | undefined),
@@ -212,7 +208,7 @@ function importNewFormat(data: Record<string, unknown>): Dag {
   // ── Technical services ────────────────────────────────────────────────────
   const technicalServices: TechnicalService[] = Object.entries(techSvcMetaRaw).map(([nodeId, meta]) => ({
     id:          uid(),
-    name:        String(meta.name ?? '').trim() || nameFromKey(nodeId),
+    name:        String(meta.name ?? '').trim() || keyToName(nodeId),
     description: String(meta.description ?? '').trim() || undefined,
   }))
 
@@ -295,173 +291,11 @@ function importNewFormat(data: Record<string, unknown>): Dag {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OLD FORMAT — categories derived from landscape subgraphs (backward compat)
+// DEAD CODE REMOVED — old format (categories from DSL subgraphs) no longer supported
 // ─────────────────────────────────────────────────────────────────────────────
 
-function importOldFormat(data: Record<string, unknown>): Dag {
-  if (!data.landscape) throw new Error('Missing "landscape" field in YAML')
-
-  const compMetaRaw   = (data.components              ?? {}) as Record<string, Record<string, string>>
-  const techCompMeta  = (data['technical-components'] ?? {}) as Record<string, Record<string, string>>
-  const techSvcMeta   = (data['technical-services']   ?? {}) as Record<string, Record<string, string>>
-
-  // ── 1. Parse application landscape ─────────────────────────────────────────
-  const landscapeParsed  = parseDsl(data.landscape as string)
-  const customCategories: Category[] = []
-  const categoryMap = new Map<string, Category>()
-  for (const name of landscapeParsed.subgraphs) {
-    categoryMap.set(name, resolveCategory(name, customCategories))
-  }
-
-  const components: Component[] = landscapeParsed.nodes.map((node) => {
-    const meta     = compMetaRaw[node.id] ?? {}
-    const category = node.subgraph ? categoryMap.get(node.subgraph) : undefined
-    return {
-      id:          uid(),
-      name:        node.label,
-      description: meta.description?.trim() ?? '',
-      categoryId:  category?.id ?? '',
-      technology:  meta.technology?.trim() || undefined,
-      framework:   meta.framework?.trim()  || undefined,
-      constraints: meta.constraints?.trim() || undefined,
-    }
-  })
-
-  const findAppComp = (nodeId: string) =>
-    components.find((c) => toNodeId(c.name) === nodeId)
-
-  const relations: Relation[] = []
-  for (const rel of landscapeParsed.relations) {
-    const from = findAppComp(rel.fromId)
-    const to   = findAppComp(rel.toId)
-    if (!from || !to) continue
-    const { protocol, label } = splitProtocolLabel(rel.label ?? '')
-    relations.push({ id: uid(), fromComponentId: from.id, toComponentId: to.id, protocol, label, source: 'manual' })
-  }
-
-  // ── 2. Parse technical landscape ───────────────────────────────────────────
-  const TECH_SVC_SUBGRAPH = 'Technical Services'
-  let technicalLandscape: TechnicalLandscape = {
-    customNetworkZones: [],
-    instances:          [],
-    technicalRelations: [],
-    technicalServices:  [],
-  }
-
-  const technicalComponents: Component[] = []
-
-  if (data['technical-landscape']) {
-    const techParsed         = parseDsl(data['technical-landscape'] as string)
-    const customNetworkZones: NetworkZone[] = []
-    const zoneMap = new Map<string, NetworkZone>()
-
-    for (const name of techParsed.subgraphs) {
-      if (name === TECH_SVC_SUBGRAPH) continue
-      zoneMap.set(name, resolveZone(name, customNetworkZones))
-    }
-
-    for (const node of techParsed.nodes) {
-      if (node.subgraph === TECH_SVC_SUBGRAPH) continue
-      if (findAppComp(node.id)) continue
-      if (technicalComponents.find((c) => toNodeId(c.name) === node.id)) continue
-      const meta = techCompMeta[node.id] ?? {}
-      technicalComponents.push({
-        id:          uid(),
-        name:        node.label,
-        description: meta.description?.trim() ?? '',
-        categoryId:  '',
-        technology:  meta.technology?.trim()  || undefined,
-        framework:   meta.framework?.trim()   || undefined,
-        constraints: meta.constraints?.trim() || undefined,
-      })
-    }
-
-    const allComps     = [...components, ...technicalComponents]
-    const findAnyComp  = (nodeId: string) => allComps.find((c) => toNodeId(c.name) === nodeId)
-    const instances: ComponentInstance[]   = []
-    const instanceByNodeId = new Map<string, ComponentInstance>()
-
-    for (const node of techParsed.nodes) {
-      if (!node.subgraph || node.subgraph === TECH_SVC_SUBGRAPH) continue
-      const zone = zoneMap.get(node.subgraph)
-      const comp = findAnyComp(node.id)
-      if (!zone || !comp) continue
-      const inst: ComponentInstance = { id: uid(), componentId: comp.id, networkZoneId: zone.id }
-      instances.push(inst)
-      instanceByNodeId.set(node.id, inst)
-    }
-
-    const technicalServices: TechnicalService[] = []
-    for (const node of techParsed.nodes.filter((n) => n.subgraph === TECH_SVC_SUBGRAPH)) {
-      const meta = techSvcMeta[node.id] ?? {}
-      technicalServices.push({
-        id:          uid(),
-        name:        node.label,
-        description: meta.description?.trim() || undefined,
-      })
-    }
-
-    const technicalRelations: TechnicalRelation[] = []
-    for (const rel of techParsed.relations) {
-      const fromInst = instanceByNodeId.get(rel.fromId)
-      const toInst   = instanceByNodeId.get(rel.toId)
-      if (!fromInst || !toInst) continue
-      const fromComp = findAnyComp(rel.fromId)
-      const toComp   = findAnyComp(rel.toId)
-      if (!fromComp || !toComp) continue
-      const { protocol, label } = splitProtocolLabel(rel.label ?? '')
-      technicalRelations.push({
-        id:              uid(),
-        fromComponentId: fromComp.id,
-        toComponentId:   toComp.id,
-        fromInstanceId:  fromInst.id,
-        toInstanceId:    toInst.id,
-        protocol,
-        label,
-      })
-    }
-
-    technicalLandscape = { customNetworkZones, instances, technicalRelations, technicalServices }
-  }
-
-  // ── 3. Flows ────────────────────────────────────────────────────────────────
-  const flowsRaw   = (data.flows ?? []) as Array<Record<string, string>>
-  const minimalDag = { components } as Dag
-
-  const applicationFlows: ApplicationFlow[] = flowsRaw
-    .filter((f): f is Record<string, string> & { name: string } => !!f.name?.trim())
-    .map((f) => {
-      const diagram = (f.diagram ?? '').trim()
-      const body    = diagram.startsWith('sequenceDiagram')
-        ? diagram.replace(/^sequenceDiagram\s*\n?/, '')
-        : diagram
-      return {
-        id:          uid(),
-        name:        f.name.trim(),
-        description: f.description?.trim() ?? '',
-        steps:       body.trim() ? parseFlowSteps(body, minimalDag) : [],
-        mermaidDsl:  body.trim() || undefined,
-      }
-    })
-
-  const defaultIds = new Set(
-    DEFAULT_CATEGORIES.map((c) => `cat__${c.name.toLowerCase().replace(/\s+/g, '_')}`),
-  )
-
-  return {
-    id:               uid(),
-    name:             String(data.name).trim(),
-    description:      String(data.description ?? '').trim(),
-    createdAt:        now(),
-    updatedAt:        now(),
-    customCategories: customCategories.filter((c) => !defaultIds.has(c.id)),
-    components,
-    technicalComponents,
-    relations,
-    landscape:        {},
-    technicalLandscape,
-    applicationFlows,
-  }
+function importOldFormat(_data: Record<string, unknown>): never {
+  throw new Error('Unsupported YAML format: add a top-level "categories:" list. See help for the current format.')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

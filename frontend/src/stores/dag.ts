@@ -81,7 +81,9 @@ function migrateCategories(dag: any): {
   // Migration des composants : remplace les anciens UUID par les IDs stables
   const components: Component[] = (dag.components ?? []).map((comp: any) => {
     const stableId = oldIdToStable.get(comp.categoryId)
-    return stableId ? { ...comp, categoryId: stableId } : comp
+    const migrated = stableId ? { ...comp, categoryId: stableId } : { ...comp }
+    if (!migrated.nodeId) migrated.nodeId = toNodeId(migrated.name)
+    return migrated
   })
 
   return { customCategories, disabledCategoryIds, components }
@@ -162,7 +164,9 @@ export const useDagStore = defineStore(
         customCategories:     catMigration.customCategories,
         disabledCategoryIds:  catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
         components:           catMigration.components,
-        technicalComponents:  data.technicalComponents ?? [],
+        technicalComponents:  (data.technicalComponents ?? []).map((c: any) =>
+          c.nodeId ? c : { ...c, nodeId: toNodeId(c.name) },
+        ),
         technicalLandscape:   migrateTechnicalLandscape(data.technicalLandscape),
       }
       dags.value.push(dag)
@@ -499,6 +503,7 @@ export const useDagStore = defineStore(
       if (!dag) throw new Error(`DAG ${dagId} not found`)
       const component: Component = {
         id: generateId(),
+        nodeId: toNodeId(name),
         name,
         description,
         categoryId,
@@ -537,7 +542,7 @@ export const useDagStore = defineStore(
     function addTechnicalComponent(dagId: string, name: string, description: string, categoryId: string): Component {
       const dag = getDag(dagId)
       if (!dag) throw new Error(`DAG ${dagId} not found`)
-      const component: Component = { id: generateId(), name, description, categoryId }
+      const component: Component = { id: generateId(), nodeId: toNodeId(name), name, description, categoryId }
       dag.technicalComponents.push(component)
       dag.updatedAt = now()
       return component
@@ -620,12 +625,13 @@ export const useDagStore = defineStore(
         }
 
         const component =
-          list.find((c) => c.name === node.label)
-          ?? list.find((c) => toNodeId(c.name) === node.id)
+          list.find((c) => c.nodeId === node.id)
+          ?? list.find((c) => c.name === node.label)
 
         if (!component) {
           list.push({
             id: generateId(),
+            nodeId: node.id,
             name: node.label,
             description: '',
             categoryId: category?.id ?? '',
@@ -644,10 +650,10 @@ export const useDagStore = defineStore(
 
           const fromComp =
             (fromNode ? list.find((c) => c.name === fromNode.label) : undefined)
-            ?? list.find((c) => toNodeId(c.name) === parsedRel.fromId)
+            ?? list.find((c) => c.nodeId === parsedRel.fromId)
           const toComp =
             (toNode ? list.find((c) => c.name === toNode.label) : undefined)
-            ?? list.find((c) => toNodeId(c.name) === parsedRel.toId)
+            ?? list.find((c) => c.nodeId === parsedRel.toId)
 
           if (!fromComp || !toComp) continue
 

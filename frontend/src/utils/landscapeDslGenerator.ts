@@ -6,6 +6,13 @@ export function toNodeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()
 }
 
+// Derives a display name from a YAML key (reverse of toNodeId, best-effort)
+// "internet_user" → "Internet user", "backend_api" → "Backend api"
+export function keyToName(key: string): string {
+  const s = key.replace(/_/g, ' ')
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 // Génère la syntaxe Mermaid du label de nœud selon la forme de la catégorie
 function nodeLabel(name: string, shape?: NodeShape): string {
   switch (shape) {
@@ -34,8 +41,8 @@ function relationLine(
 ): string {
   const from = dag.components.find((c) => c.id === fromId)!
   const to   = dag.components.find((c) => c.id === toId)!
-  const f = toNodeId(from.name)
-  const t = toNodeId(to.name)
+  const f = from.nodeId
+  const t = to.nodeId
   const safe = label ? sanitizeLabel(label) : ''
   return safe
     ? `${indent}${f} -->|${safe}| ${t}`
@@ -107,10 +114,10 @@ export function generateComponentsBody(dag: Dag, forceCategory: boolean, addName
 
     if (forceCategory || showSubgraph) {
       lines.push(`  subgraph ${category.name}`)
-      for (const comp of components) lines.push(`    ${toNodeId(comp.name)}${nameSuffix(comp)}`)
+      for (const comp of components) lines.push(`    ${comp.nodeId}${nameSuffix(comp)}`)
       lines.push('  end')
     } else {
-      for (const comp of components) lines.push(`    ${toNodeId(comp.name)}${nameSuffix(comp)}`)
+      for (const comp of components) lines.push(`    ${comp.nodeId}${nameSuffix(comp)}`)
     }
   }
   return lines.join('\n')
@@ -181,10 +188,10 @@ export function generateNumberedLandscapeDsl(dag: Dag): { dsl: string; numbered:
     const showSubgraph = dag.landscape?.categorySubgraphs?.[category.id] ?? category.showSubgraph
     if (showSubgraph) {
       lines.push(`  subgraph ${category.name}`)
-      for (const comp of comps) lines.push(`    ${toNodeId(comp.name)}${nodeLabelNumbered(comp.name, numMap.get(comp.id) ?? '', shape)}`)
+      for (const comp of comps) lines.push(`    ${comp.nodeId}${nodeLabelNumbered(comp.name, numMap.get(comp.id) ?? '', shape)}`)
       lines.push('  end')
     } else {
-      for (const comp of comps) lines.push(`    ${toNodeId(comp.name)}${nodeLabelNumbered(comp.name, numMap.get(comp.id) ?? '', shape)}`)
+      for (const comp of comps) lines.push(`    ${comp.nodeId}${nodeLabelNumbered(comp.name, numMap.get(comp.id) ?? '', shape)}`)
     }
   }
 
@@ -210,8 +217,8 @@ export function parseRelationsBody(
   for (const line of body.split('\n')) {
     const m = line.match(ARROW_RE)
     if (!m) continue
-    const fromComp = dag.components.find((c) => toNodeId(c.name) === m[1])
-    const toComp   = dag.components.find((c) => toNodeId(c.name) === m[3])
+    const fromComp = dag.components.find((c) => c.nodeId === m[1])
+    const toComp   = dag.components.find((c) => c.nodeId === m[3])
     if (!fromComp || !toComp) continue
     result.push({
       fromComponentId: fromComp.id,
