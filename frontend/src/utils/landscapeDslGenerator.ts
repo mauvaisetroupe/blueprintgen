@@ -9,6 +9,7 @@ export function toNodeId(name: string): string {
 // Derives a display name from a YAML key (reverse of toNodeId, best-effort)
 // "internet_user" → "Internet user", "backend_api" → "Backend api"
 export function keyToName(key: string): string {
+  if (!key) return ''; // Handle undefined, null, or empty string
   const s = key.replace(/_/g, ' ')
   return s.charAt(0).toUpperCase() + s.slice(1)
 }

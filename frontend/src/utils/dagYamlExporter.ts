@@ -69,7 +69,7 @@ function componentEntryLines(
   const ki    = ' '.repeat(keyIndent)
   const lines: string[] = []
   const key = comp.nodeId
-  if (comp.name !== keyToName(key)) lines.push(`${ki}name: ${yamlScalar(comp.name)}`)
+  if (comp.name) lines.push(`${ki}name: ${yamlScalar(comp.name)}`)
   if (catName) lines.push(`${ki}category: ${yamlScalar(catName)}`)
   if (zoneNames.length > 0) lines.push(`${ki}zones: [${zoneNames.map(yamlScalar).join(', ')}]`)
   if (comp.description?.trim()) lines.push(`${ki}description: ${yamlBlock(comp.description, keyIndent + 2)}`)

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, DEFAULT_NETWORK_ZONES, DEFAULT_CATEGORY_NAMES, defaultZoneId, defaultCategoryId, allCategories, allNetworkZones } from '@/types/dag'
+import { type Dag, type Category, type Component, type Relation, type FlowStep, type DagImportDraft, type NetworkZone, type ComponentInstance, type TechnicalRelation, type TechnicalService, DEFAULT_CATEGORIES, defaultCategoryId, allCategories, allNetworkZones } from '@/types/dag'
 import type { ParsedDsl } from '@/utils/dslParser'
 import { toNodeId } from '@/utils/landscapeDslGenerator'
 
@@ -8,86 +8,6 @@ function generateId(): string {
   return crypto.randomUUID()
 }
 
-// Migration défensive : convertit l'ancien format TechnicalLandscape vers le nouveau
-function migrateTechnicalLandscape(tl: any) {
-  // Récupère les zones custom (anciennes ou nouvelles) en excluant les zones par défaut
-  const defaultNames = new Set(DEFAULT_NETWORK_ZONES.map((z) => z.name.toLowerCase()))
-  const rawZones: NetworkZone[] = tl?.networkZones ?? tl?.customNetworkZones ?? []
-  const customZones = rawZones.filter((z: NetworkZone) => !defaultNames.has(z.name.toLowerCase()))
-
-  // Migre les ComponentInstances qui référencent d'anciens IDs de zones par défaut
-  // (remplace les UUID par les IDs stables dérivés du nom)
-  const instances: ComponentInstance[] = (tl?.instances ?? []).map((inst: ComponentInstance) => {
-    const oldZone = rawZones.find((z: NetworkZone) => z.id === inst.networkZoneId)
-    if (oldZone && defaultNames.has(oldZone.name.toLowerCase())) {
-      return { ...inst, networkZoneId: defaultZoneId(oldZone.name) }
-    }
-    return inst
-  })
-
-  // Migration des TechnicalRelations : ajout de fromComponentId/toComponentId si absents
-  const technicalRelations: TechnicalRelation[] = (tl?.technicalRelations ?? []).map((tr: any) => {
-    if (tr.fromComponentId && tr.toComponentId) return tr
-    const fromInst = instances.find((i) => i.id === tr.fromInstanceId)
-    const toInst   = instances.find((i) => i.id === tr.toInstanceId)
-    return {
-      ...tr,
-      fromComponentId: fromInst?.componentId ?? '',
-      toComponentId:   toInst?.componentId   ?? '',
-    }
-  })
-
-  return {
-    customNetworkZones: customZones,
-    instances,
-    technicalRelations,
-    technicalServices:  tl?.technicalServices  ?? [],
-    useElk:             tl?.useElk,
-    categorySubgraphs:  tl?.categorySubgraphs,
-  }
-}
-
-// Migration défensive : convertit l'ancien format dag.categories vers customCategories + disabledCategoryIds
-function migrateCategories(dag: any): {
-  customCategories: Category[]
-  disabledCategoryIds: string[]
-  components: Component[]
-} {
-  const oldCategories: any[] = dag.categories ?? []
-
-  // Table de correspondance : ancien UUID → ID stable (pour les catégories par défaut)
-  const oldIdToStable = new Map<string, string>()
-  for (const cat of oldCategories) {
-    if (DEFAULT_CATEGORY_NAMES.has(cat.name.toLowerCase())) {
-      oldIdToStable.set(cat.id, defaultCategoryId(cat.name))
-    }
-  }
-
-  // Catégories custom (non-défaut)
-  const customCategories: Category[] = oldCategories
-    .filter((c: any) => !DEFAULT_CATEGORY_NAMES.has(c.name.toLowerCase()))
-    .map((c: any, i: number) => ({
-      id:           c.id,
-      name:         c.name,
-      order:        DEFAULT_CATEGORIES.length + i + 1,
-      showSubgraph: c.showSubgraph,
-    }))
-
-  // Catégories par défaut absentes de l'ancien DAG (supprimées par l'architecte)
-  const disabledCategoryIds: string[] = DEFAULT_CATEGORIES
-    .filter((def) => !oldCategories.some((c: any) => c.name.toLowerCase() === def.name.toLowerCase()))
-    .map((def) => defaultCategoryId(def.name))
-
-  // Migration des composants : remplace les anciens UUID par les IDs stables
-  const components: Component[] = (dag.components ?? []).map((comp: any) => {
-    const stableId = oldIdToStable.get(comp.categoryId)
-    const migrated = stableId ? { ...comp, categoryId: stableId } : { ...comp }
-    if (!migrated.nodeId) migrated.nodeId = toNodeId(migrated.name)
-    return migrated
-  })
-
-  return { customCategories, disabledCategoryIds, components }
-}
 
 function now(): string {
   return new Date().toISOString()
@@ -141,33 +61,36 @@ export const useDagStore = defineStore(
     /**
      * Ouvre un DAG depuis un objet JSON sauvegardé (format natif du store).
      * Un nouvel ID est généré pour éviter les conflits si on ouvre le même fichier deux fois.
-     * Les champs corrompus ou manquants sont sanitizés.
      */
     function openDag(data: Dag): Dag {
-      const rawData = data as any
-      const catMigration = rawData.categories
-        ? migrateCategories(rawData)
-        : { customCategories: data.customCategories ?? [], disabledCategoryIds: data.disabledCategoryIds ?? [], components: data.components ?? [] }
-
+      const tl = data.technicalLandscape
       const dag: Dag = {
         ...data,
         id:        generateId(),
         createdAt: now(),
         updatedAt: now(),
         landscape: {
-          useElk:           data.landscape?.useElk,
+          useElk:            data.landscape?.useElk,
           categorySubgraphs: data.landscape?.categorySubgraphs,
         },
-        // Champs ajoutés dans les versions récentes — migration défensive
-        relations:            data.relations           ?? [],
-        applicationFlows:     data.applicationFlows    ?? [],
-        customCategories:     catMigration.customCategories,
-        disabledCategoryIds:  catMigration.disabledCategoryIds.length > 0 ? catMigration.disabledCategoryIds : undefined,
-        components:           catMigration.components,
-        technicalComponents:  (data.technicalComponents ?? []).map((c: any) =>
+        relations:           data.relations        ?? [],
+        applicationFlows:    data.applicationFlows ?? [],
+        customCategories:    data.customCategories ?? [],
+        disabledCategoryIds: data.disabledCategoryIds,
+        components: (data.components ?? []).map((c: any) =>
           c.nodeId ? c : { ...c, nodeId: toNodeId(c.name) },
         ),
-        technicalLandscape:   migrateTechnicalLandscape(data.technicalLandscape),
+        technicalComponents: (data.technicalComponents ?? []).map((c: any) =>
+          c.nodeId ? c : { ...c, nodeId: toNodeId(c.name) },
+        ),
+        technicalLandscape: {
+          customNetworkZones: tl?.customNetworkZones ?? [],
+          instances:          tl?.instances          ?? [],
+          technicalRelations: tl?.technicalRelations ?? [],
+          technicalServices:  tl?.technicalServices  ?? [],
+          useElk:             tl?.useElk,
+          categorySubgraphs:  tl?.categorySubgraphs,
+        },
       }
       dags.value.push(dag)
       return dag
@@ -422,19 +345,11 @@ export const useDagStore = defineStore(
     function getDag(id: string): Dag | undefined {
       const dag = dags.value.find((d) => d.id === id)
       if (!dag) return undefined
-      // Migrations défensives pour les DAGs créés avant les nouveaux champs
-      if (!dag.relations) dag.relations = []
-      if (!dag.technicalComponents) dag.technicalComponents = []
-      if (!dag.technicalLandscape?.customNetworkZones) {
-        dag.technicalLandscape = migrateTechnicalLandscape(dag.technicalLandscape)
+      for (const c of dag.components) {
+        if (!c.nodeId) c.nodeId = toNodeId(c.name)
       }
-      const rawDag = dag as any
-      if (!dag.customCategories && rawDag.categories) {
-        const { customCategories, disabledCategoryIds, components } = migrateCategories(rawDag)
-        dag.customCategories = customCategories
-        if (disabledCategoryIds.length > 0) dag.disabledCategoryIds = disabledCategoryIds
-        dag.components = components
-        delete rawDag.categories
+      for (const c of dag.technicalComponents) {
+        if (!c.nodeId) c.nodeId = toNodeId(c.name)
       }
       return dag
     }
