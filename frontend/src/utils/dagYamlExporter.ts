@@ -48,7 +48,7 @@ function generateTechnicalLandscapeArrows(dag: Dag): string {
       const from  = allComps.find((c) => c.id === rel.fromComponentId)
       const to    = allComps.find((c) => c.id === rel.toComponentId)
       if (!from || !to) return null
-      const label = [rel.protocol, rel.label].filter(Boolean).join(' — ')
+      const label = rel.protocol?.trim() ?? ''
       const fId   = from.nodeId
       const tId   = to.nodeId
       return label ? `${fId} -->|${label}| ${tId}` : `${fId} --> ${tId}`

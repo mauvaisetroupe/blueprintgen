@@ -28,7 +28,6 @@ interface RelationChoice {
   toZoneName: string
   fromCategoryName: string
   toCategoryName: string
-  label?: string
   alreadyExists: boolean
 }
 
@@ -83,7 +82,6 @@ const choices = computed((): RelationChoice[] => {
           toZoneName:        toZone?.name   ?? '',
           fromCategoryName,
           toCategoryName,
-          label:             rel.label,
           alreadyExists,
         })
       }
@@ -144,7 +142,6 @@ function doImport() {
       toComponentId:   c.toComponentId,
       fromInstanceId:  c.fromInstanceId,
       toInstanceId:    c.toInstanceId,
-      label:           c.label,
     })),
   )
   emit('imported')

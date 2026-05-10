@@ -82,7 +82,6 @@ export interface TechnicalRelation {
   fromInstanceId: string    // instance physique (zone) du composant source
   toInstanceId: string      // instance physique (zone) du composant cible
   protocol?: string
-  label?: string
   imported?: boolean        // true = importée depuis le landscape applicatif (permet le "clean")
 }
 

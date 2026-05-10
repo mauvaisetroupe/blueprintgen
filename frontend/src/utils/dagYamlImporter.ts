@@ -65,19 +65,6 @@ function resolveZone(name: string, customNetworkZones: NetworkZone[]): NetworkZo
   return zone
 }
 
-// ── Protocol / label split ────────────────────────────────────────────────────
-
-function splitProtocolLabel(raw: string): { protocol?: string; label?: string } {
-  const sep = raw.indexOf(' — ')
-  if (sep !== -1) {
-    return {
-      protocol: raw.slice(0, sep).trim() || undefined,
-      label:    raw.slice(sep + 3).trim() || undefined,
-    }
-  }
-  return { protocol: raw.trim() || undefined }
-}
-
 // ── Stored custom categories filter ──────────────────────────────────────────
 
 function filterStoredCustomCategories(customCategories: Category[]): Category[] {
@@ -266,7 +253,7 @@ function importNewFormat(data: Record<string, unknown>): { dag: Dag; errors: str
       const to   = resolveToCompAndInstance(rel.toId)
       if (!from) { errors.push(`technical-landscape: unknown node "${rel.fromId}"`); continue }
       if (!to)   { errors.push(`technical-landscape: unknown node "${rel.toId}"`);   continue }
-      const { protocol, label } = splitProtocolLabel(rel.label ?? '')
+      const protocol = rel.label?.trim() || undefined
       technicalRelations.push({
         id:              uid(),
         fromComponentId: from.comp.id,
@@ -274,7 +261,6 @@ function importNewFormat(data: Record<string, unknown>): { dag: Dag; errors: str
         fromInstanceId:  from.instanceId,
         toInstanceId:    to.instanceId,
         protocol,
-        label,
       })
     }
   }

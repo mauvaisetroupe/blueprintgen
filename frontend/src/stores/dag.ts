@@ -705,17 +705,16 @@ export const useDagStore = defineStore(
       fromInstanceId: string,
       toInstanceId: string,
       protocol?: string,
-      label?: string,
     ): TechnicalRelation {
       const dag = getDag(dagId)
       if (!dag) throw new Error(`DAG ${dagId} not found`)
-      const relation: TechnicalRelation = { id: generateId(), fromComponentId, toComponentId, fromInstanceId, toInstanceId, protocol, label }
+      const relation: TechnicalRelation = { id: generateId(), fromComponentId, toComponentId, fromInstanceId, toInstanceId, protocol }
       dag.technicalLandscape.technicalRelations.push(relation)
       dag.updatedAt = now()
       return relation
     }
 
-    function updateTechnicalRelation(dagId: string, relationId: string, patch: Partial<Pick<TechnicalRelation, 'protocol' | 'label' | 'fromInstanceId' | 'toInstanceId'>>) {
+    function updateTechnicalRelation(dagId: string, relationId: string, patch: Partial<Pick<TechnicalRelation, 'protocol' | 'fromInstanceId' | 'toInstanceId'>>) {
       const dag = getDag(dagId)
       if (!dag) return
       const rel = dag.technicalLandscape.technicalRelations.find((r) => r.id === relationId)
@@ -750,7 +749,7 @@ export const useDagStore = defineStore(
 
     function importTechnicalRelationsFromLandscape(
       dagId: string,
-      selections: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; label?: string }>,
+      selections: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string }>,
     ) {
       const dag = getDag(dagId)
       if (!dag) return
