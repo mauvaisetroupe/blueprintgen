@@ -30,7 +30,7 @@ function generateLandscapeArrows(dag: Dag): string {
     .map((rel) => {
       const from  = appComps.find((c) => c.id === rel.fromComponentId)!
       const to    = appComps.find((c) => c.id === rel.toComponentId)!
-      const label = [rel.protocol, rel.label].filter(Boolean).join(' — ')
+      const label = rel.label?.trim() ?? ''
       const fId   = from.nodeId
       const tId   = to.nodeId
       return label ? `${fId} -->|${label}| ${tId}` : `${fId} --> ${tId}`

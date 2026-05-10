@@ -28,7 +28,6 @@ interface RelationChoice {
   toZoneName: string
   fromCategoryName: string
   toCategoryName: string
-  protocol?: string
   label?: string
   alreadyExists: boolean
 }
@@ -84,7 +83,6 @@ const choices = computed((): RelationChoice[] => {
           toZoneName:        toZone?.name   ?? '',
           fromCategoryName,
           toCategoryName,
-          protocol:          rel.protocol,
           label:             rel.label,
           alreadyExists,
         })
@@ -146,7 +144,6 @@ function doImport() {
       toComponentId:   c.toComponentId,
       fromInstanceId:  c.fromInstanceId,
       toInstanceId:    c.toInstanceId,
-      protocol:        c.protocol,
       label:           c.label,
     })),
   )
@@ -188,7 +185,6 @@ function doImport() {
             <th class="col-arrow"></th>
             <th>To</th>
             <th class="col-zone"></th>
-            <th class="col-proto">Protocol</th>
           </tr>
         </thead>
         <tbody>
@@ -227,9 +223,6 @@ function doImport() {
                   class="zone-pill"
                   :style="{ background: zoneColors(c.toZoneName).fill, borderColor: zoneColors(c.toZoneName).stroke }"
                 >{{ c.toZoneName }}</span>
-              </td>
-              <td class="col-proto">
-                <span v-if="c.protocol" class="proto-badge">{{ c.protocol }}</span>
               </td>
             </tr>
           </template>
@@ -282,18 +275,11 @@ function doImport() {
 .col-check  { width: 32px; }
 .col-zone   { width: 1%; white-space: nowrap; }
 .col-arrow  { width: 24px; text-align: center; color: var(--p-text-muted-color); font-size: 0.85rem; }
-.col-proto  { width: 90px; }
 .cell-name  { font-size: 0.875rem; font-weight: 500; }
 
 .zone-pill {
   display: inline-block;
   font-size: 0.72rem; padding: 0.12rem 0.45rem; border-radius: 20px;
   border: 1px solid; white-space: nowrap; color: #064e3b;
-}
-.proto-badge {
-  display: inline-block;
-  font-size: 0.72rem; padding: 0.12rem 0.4rem; border-radius: 4px;
-  background: var(--p-surface-100, #f3f4f6); color: var(--p-text-muted-color);
-  border: 1px solid var(--p-content-border-color);
 }
 </style>

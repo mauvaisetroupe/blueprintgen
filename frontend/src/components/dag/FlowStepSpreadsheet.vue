@@ -92,7 +92,7 @@ function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
           <th class="col-from">From</th>
           <th class="col-arrow"></th>
           <th class="col-to">To</th>
-          <th class="col-label">Label / Protocol</th>
+          <th class="col-label">Label</th>
           <th class="col-return" title="Return arrow (dashed)">Return</th>
           <th class="col-actions"></th>
         </tr>
@@ -147,7 +147,7 @@ function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
               :ref="(el) => setCellRef(el as HTMLElement, rowIndex, 2)"
               class="cell-input"
               :value="step.label ?? ''"
-              placeholder="e.g. REST, HTTPS…"
+              placeholder="label..."
               @input="updateStep(step.id, { label: ($event.target as HTMLInputElement).value })"
               @keydown="onKeydown($event, rowIndex, 2)"
             />

@@ -750,7 +750,7 @@ export const useDagStore = defineStore(
 
     function importTechnicalRelationsFromLandscape(
       dagId: string,
-      selections: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; protocol?: string; label?: string }>,
+      selections: Array<{ fromComponentId: string; toComponentId: string; fromInstanceId: string; toInstanceId: string; label?: string }>,
     ) {
       const dag = getDag(dagId)
       if (!dag) return

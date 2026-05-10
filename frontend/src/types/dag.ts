@@ -45,7 +45,6 @@ export interface Relation {
   fromComponentId: string
   toComponentId: string
   label?: string
-  protocol?: string   // protocole technique (HTTPS, REST, AMQP…) — distinct du label fonctionnel
   source?: 'manual'
   imported?: boolean  // importé depuis les flows via le dialog d'import
 }
@@ -149,7 +148,6 @@ export interface FlowStep {
   fromComponentId: string
   toComponentId: string
   label?: string
-  protocol?: string
   order: number
   isReturn?: boolean   // true pour les flèches -->> (réponse), false/undefined pour les forwards
 }

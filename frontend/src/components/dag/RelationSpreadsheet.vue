@@ -146,7 +146,7 @@ function onKeydown(e: KeyboardEvent, rowIndex: number, colIndex: number) {
               :ref="(el) => setCellRef(el as HTMLElement, rowIndex, 2)"
               class="cell-input"
               :value="relation.label ?? ''"
-              placeholder="HTTPS, REST…"
+              placeholder="label..."
               @input="updateLabel(relation, ($event.target as HTMLInputElement).value)"
               @keydown="onKeydown($event, rowIndex, 2)"
             />

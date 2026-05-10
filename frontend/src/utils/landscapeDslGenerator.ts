@@ -75,17 +75,17 @@ export function collectFlowRelations(dag: Dag): Array<{ fromComponentId: string;
  */
 export function allEffectiveLandscapeRelations(
   dag: Dag,
-): Array<{ fromComponentId: string; toComponentId: string; label?: string; protocol?: string }> {
+): Array<{ fromComponentId: string; toComponentId: string; label?: string }> {
   const valid = validComponentIds(dag)
   const seen  = new Set<string>()
-  const result: Array<{ fromComponentId: string; toComponentId: string; label?: string; protocol?: string }> = []
+  const result: Array<{ fromComponentId: string; toComponentId: string; label?: string }> = []
 
   for (const r of dag.relations) {
     if (!valid.has(r.fromComponentId) || !valid.has(r.toComponentId)) continue
     const key = `${r.fromComponentId}->${r.toComponentId}`
     if (seen.has(key)) continue
     seen.add(key)
-    result.push({ fromComponentId: r.fromComponentId, toComponentId: r.toComponentId, label: r.label, protocol: r.protocol })
+    result.push({ fromComponentId: r.fromComponentId, toComponentId: r.toComponentId, label: r.label })
   }
 
   return result

@@ -252,8 +252,8 @@ function importNewFormat(data: Record<string, unknown>): { dag: Dag; errors: str
       const to   = findComp(rel.toId)
       if (!from) { errors.push(`landscape: unknown component "${rel.fromId}"`); continue }
       if (!to)   { errors.push(`landscape: unknown component "${rel.toId}"`);   continue }
-      const { protocol, label } = splitProtocolLabel(rel.label ?? '')
-      relations.push({ id: uid(), fromComponentId: from.id, toComponentId: to.id, protocol, label, source: 'manual' })
+      const label = rel.label?.trim() || undefined
+      relations.push({ id: uid(), fromComponentId: from.id, toComponentId: to.id, label, source: 'manual' })
     }
   }
 
